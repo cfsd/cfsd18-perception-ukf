@@ -418,9 +418,35 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
 	return hx;
 }
 
-void Kalman::sendStates(){
+void Kalman::sendStates(uint32_t ukfStamp){
 
+	//Pose
+	opendlv::logic::sensation::Geolocation poseMessage;
+  	std::lock_guard<std::mutex> lockSend(m_poseMutex); 
+  	std::array<double,2> cartesianPos;
+  	cartesianPos[0] = m_states(0);
+  	cartesianPos[1] = m_states(1);
+  	std::array<double,2> sendGPS = wgs84::fromCartesian(m_gpsReference, cartesianPos);
+  	poseMessage.longitude(sendGPS[0]);
+    poseMessage.latitude(sendGPS[1]);
+    poseMessage.heading(static_cast<float>(m_states(5)));
+    //std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
+    cluon::data::TimeStamp sampleTime = m_geolocationReceivedTime;
+    od4.send(poseMessage, sampleTime ,ukfStamp);
 
+    //groundspeed
+    opendlv::proxy::GroundSpeedReading gsMessage;
+	std::lock_guard<std::mutex> lockGroundSpeed(m_groundSpeedMutex);
+	gsMessage.groundSpeed(static_cast<float>(m_states(2)));
+	sampleTime = m_groundSpeedReceivedTime;
+    od4.send(gsMessage, sampleTime ,ukfStamp);
+
+    //Yaw
+    opendlv::proxy::AngularVelocityReading yawMessage;    
+  	std::lock_guard<std::mutex> lockYaw(m_yawMutex);
+  	yawMessage.angularVelocityZ(static_cast<float>(m_states(4)));
+  	sampleTime = m_yawReceivedTime;
+    od4.send(yawMessage, sampleTime ,ukfStamp);
 }
 
 void Kalman::initializeModule(){

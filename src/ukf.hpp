@@ -47,7 +47,7 @@ void setStateMachineStatus(cluon::data::Envelope data);
 bool getStateMachineStatus();
 void nextRack(cluon::data::Envelope data);
 bool getModuleState();
-void sendStates();
+void sendStates(uint32_t ukfStamp);
 void initializeModule();
   void UKFPrediction();
   void UKFUpdate();

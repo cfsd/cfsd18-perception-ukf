@@ -115,7 +115,7 @@ int32_t main(int32_t argc, char **argv) {
         if(kalman.getStateMachineStatus()){
           kalman.UKFUpdate();
           kalman.UKFPrediction();
-          kalman.sendStates();
+          kalman.sendStates(ukfStamp);
         }
       }else{
         kalman.initializeModule();
