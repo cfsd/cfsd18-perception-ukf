@@ -75,12 +75,14 @@ void initializeModule();
   cluon::data::TimeStamp m_geolocationReceivedTime ={};
   cluon::data::TimeStamp m_accReceivedTime ={};
   cluon::data::TimeStamp m_rackReceivedTime ={};
+  cluon::data::TimeStamp m_wheelReceivedTime ={};
   std::mutex m_poseMutex;
   std::mutex m_yawMutex;
   std::mutex m_groundSpeedMutex;
   std::mutex m_stateMachineMutex;
   std::mutex m_accMutex;
   std::mutex m_deltaMutex;
+  std::mutex m_wheelMutex;
   Eigen::MatrixXd m_states;
   Eigen::MatrixXd m_Q;
   Eigen::MatrixXd m_R;
@@ -88,10 +90,16 @@ void initializeModule();
   double m_sampleTime;
   Eigen::MatrixXd m_vehicleModelParameters;
   Eigen::MatrixXd m_stateCovP;
-
+  Eigen::Vector2d m_wheelSpeed;
   bool m_readyStateMachine = false;
   bool m_readyState = false;
   int m_validRackMeasurements = 0;
+
+  int m_validGroundSpeedMeasurements = 0;
+  int m_validWheelLeftMeasurements = 0;
+  int m_validWheelRightMeasurements = 0;
+  uint32_t m_wheelIdLeft;
+  uint32_t m_wheelIdRight;
     // Constants for degree transformation
   const double DEG2RAD = 0.017453292522222; // PI/180.0
   const double RAD2DEG = 57.295779513082325; // 1.0 / DEG2RAD;

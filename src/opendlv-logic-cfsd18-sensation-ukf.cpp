@@ -44,13 +44,15 @@ int32_t main(int32_t argc, char **argv) {
     //std::shared_ptr<Slam> slammer = std::shared_ptr<Slam>(new Slam(10));
     cluon::OD4Session od4{static_cast<uint16_t>(std::stoi(commandlineArguments["cid"]))};
 
-    cluon::OD4Session od4Rack{static_cast<uint16_t>(std::stoi(commandlineArguments["cidRack"]))};
+    cluon::OD4Session od4Dan{static_cast<uint16_t>(std::stoi(commandlineArguments["cidDan"]))};
     Kalman kalman(commandlineArguments,od4);
     uint32_t estimationStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["estimationId"]));
     uint32_t ukfStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["id"])); 
     uint32_t stateMachineStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["stateMachineId"]));
-
     uint32_t rackStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["rackId"]));
+    uint32_t wheelIdLeft = static_cast<uint32_t>(std::stoi(commandlineArguments["wheelEncoderIdLeft"]));
+    uint32_t wheelIdRight = static_cast<uint32_t>(std::stoi(commandlineArguments["wheelEncoderIdRight"]));
+
     auto poseEnvelope{[&ukf = kalman,senderStamp = estimationStamp](cluon::data::Envelope &&envelope)
       {
         if(envelope.senderStamp() == senderStamp){
@@ -67,9 +69,9 @@ int32_t main(int32_t argc, char **argv) {
       }
     };
 
-    auto groundSpeedEnvelope{[&ukf = kalman, senderStamp = estimationStamp](cluon::data::Envelope &&envelope)
+    auto groundSpeedEnvelope{[&ukf = kalman, senderStampSBG = estimationStamp, senderStampWheelL = wheelIdLeft,senderStampWheelR = wheelIdRight](cluon::data::Envelope &&envelope)
       {
-        if(envelope.senderStamp() == senderStamp){
+        if(envelope.senderStamp() == senderStampSBG || envelope.senderStamp() == senderStampWheelR || envelope.senderStamp() == senderStampWheelL){
           ukf.nextGroundSpeed(envelope);
         }
       }
@@ -100,15 +102,16 @@ int32_t main(int32_t argc, char **argv) {
     od4.dataTrigger(opendlv::logic::sensation::Geolocation::ID(),poseEnvelope);
     od4.dataTrigger(opendlv::proxy::AngularVelocityReading::ID(),yawRateEnvelope);
     od4.dataTrigger(opendlv::proxy::GroundSpeedReading::ID(),groundSpeedEnvelope);
+    od4Dan.dataTrigger(opendlv::proxy::GroundSpeedReading::ID(),groundSpeedEnvelope);
     od4.dataTrigger(opendlv::proxy::AccelerationReading::ID(),accelerationEnvelope);
-    od4Rack.dataTrigger(opendlv::proxy::GroundSteeringReading::ID(),rackEnvelope);
+    od4Dan.dataTrigger(opendlv::proxy::GroundSteeringReading::ID(),rackEnvelope);
     od4.dataTrigger(opendlv::proxy::SwitchStateReading::ID(),stateMachineStatusEnvelope);
     
 
     // Just sleep as this microservice is data driven.
     using namespace std::literals::chrono_literals;
     bool readyState = false;
-    while (od4.isRunning() && od4Rack.isRunning()) {
+    while (od4.isRunning() && od4Dan.isRunning()) {
 
       if(readyState){
         opendlv::system::SignalStatusMessage ssm;

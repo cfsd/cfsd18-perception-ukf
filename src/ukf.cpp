@@ -32,6 +32,7 @@ Kalman::Kalman(std::map<std::string, std::string> commandlineArguments,cluon::OD
   , m_stateMachineMutex()
   , m_accMutex()
   , m_deltaMutex()
+  , m_wheelMutex()
   , m_states()
   , m_Q()
   , m_R()
@@ -39,6 +40,9 @@ Kalman::Kalman(std::map<std::string, std::string> commandlineArguments,cluon::OD
   , m_sampleTime()
   , m_vehicleModelParameters()
   , m_stateCovP()
+  , m_wheelSpeed()
+  , m_wheelIdLeft()
+  , m_wheelIdRight()
 {
   m_odometryData << 0,0,0;
   m_acceleration << 0,0,0;
@@ -47,7 +51,7 @@ Kalman::Kalman(std::map<std::string, std::string> commandlineArguments,cluon::OD
   m_Q = Eigen::MatrixXd::Zero(6,6); //Six states
   m_R = Eigen::MatrixXd::Zero(7,7); //Seven Measurements
   m_stateCovP = Eigen::MatrixXd::Identity(6,6); //Initialize P
-  
+  m_wheelSpeed << 0,0;	
   setUp(commandlineArguments);
 }
 
@@ -58,6 +62,10 @@ void Kalman::setUp(std::map<std::string, std::string> configuration)
 	  m_gpsReference[0] = static_cast<double>(std::stod(configuration["refLatitude"]));
 	  m_gpsReference[1] = static_cast<double>(std::stod(configuration["refLongitude"]));
 	  m_sampleTime = static_cast<double>(std::stod(configuration["sampleTime"]));
+
+
+      m_wheelIdLeft = static_cast<uint32_t>(std::stoi(configuration["wheelEncoderIdLeft"]));
+      m_wheelIdRight = static_cast<uint32_t>(std::stoi(configuration["wheelEncoderIdRight"]));
 
 	  double qX = static_cast<double>(std::stod(configuration["Qx"]));
 	  double qY = static_cast<double>(std::stod(configuration["Qy"]));
@@ -79,7 +87,7 @@ void Kalman::setUp(std::map<std::string, std::string> configuration)
 	  double const rAccX = static_cast<double>(std::stod(configuration["RaccX"]));
 	  double const rAccY = static_cast<double>(std::stod(configuration["RaccY"]));
 	  double const rYaw = static_cast<double>(std::stod(configuration["Ryaw"]));
-	  double const rHeading = static_cast<double>(std::stod(configuration["Rheading"]));		 
+	  double const rHeading = static_cast<double>(std::stod(configuration["Rheading"]));	 
 	  m_R << rX,0,0,0,0,0,0,
 	  		 0,rY,0,0,0,0,0,
 	  		 0,0,rVelX,0,0,0,0,
@@ -131,8 +139,18 @@ void Kalman::nextGroundSpeed(cluon::data::Envelope data){
 
   std::lock_guard<std::mutex> lockGroundSpeed(m_groundSpeedMutex);
   auto groundSpeed = cluon::extractMessage<opendlv::proxy::GroundSpeedReading>(std::move(data));
-  m_groundSpeed = groundSpeed.groundSpeed();
-  m_groundSpeedReceivedTime = data.sampleTimeStamp();
+  uint32_t stamp = data.senderStamp();
+  if(stamp == m_wheelIdLeft){
+  	m_wheelSpeed(0) = groundSpeed.groundSpeed();
+  	m_validWheelLeftMeasurements++;
+  }else if(stamp == m_wheelIdRight){
+  	m_wheelSpeed(1) = groundSpeed.groundSpeed();
+  	m_validWheelRightMeasurements++;
+  }else{
+  	m_groundSpeed = groundSpeed.groundSpeed();
+  	m_groundSpeedReceivedTime = data.sampleTimeStamp();
+  	m_validGroundSpeedMeasurements++;
+  }
    //std::cout << "Yaw in message: " << m_yawRate << std::endl;
 }
 void Kalman::nextYawRate(cluon::data::Envelope data){
@@ -337,11 +355,12 @@ void Kalman::UKFUpdate()
 
 		y << m_odometryData(0), 
 		 	m_odometryData(1),
-		 	m_groundSpeed,
+		 	(m_groundSpeed + m_wheelSpeed(0)+m_wheelSpeed(1))/3,
 		 	m_acceleration(0),
 		 	m_acceleration(1),
 		 	m_yawRate,
 		 	m_odometryData(2);
+		 	
 	}
 
 	//State update
@@ -449,7 +468,7 @@ void Kalman::sendStates(uint32_t ukfStamp){
 
 void Kalman::initializeModule(){
 	int validGpsMeasurements = 0;
-	int validGroundspeedMeasurements = 0;
+	//int validGroundspeedMeasurements = 0;
 	int validYawMeasurements = 0;
 	int validAccMeasurements = 0;
 	//int validRackMeasurements = 0;
@@ -461,7 +480,7 @@ void Kalman::initializeModule(){
 
 	double lastOdoX = 10000;
 	double lastOdoY = 10000;
-	float lastGroundspeed = 10000;
+	//float lastGroundspeed = 10000;
 	double lastYaw = 10000;
 	float lastAccX = 10000;
 	float lastAccY = 10000;
@@ -498,12 +517,12 @@ void Kalman::initializeModule(){
 
 
 		//Check groundspeed
-      	if(std::fabs(m_groundSpeed -lastGroundspeed) > 0.001){
+      	/*if(std::fabs(m_groundSpeed -lastGroundspeed) > 0.001){
       		lastGroundspeed = m_groundSpeed;
       		validGroundspeedMeasurements++;
-      	}
+      	}*/
 
-      	if(!groundSpeedReadyState && validGroundspeedMeasurements > 30){
+      	if(!groundSpeedReadyState && m_validGroundSpeedMeasurements > 30 && m_validWheelRightMeasurements > 30 && m_validWheelLeftMeasurements > 30){
       		groundSpeedReadyState = true;
       		std::cout << "Groundspeed measurement Ready .." << std::endl;
       	}
