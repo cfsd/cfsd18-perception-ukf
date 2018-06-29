@@ -40,7 +40,6 @@ Kalman::Kalman(std::map<std::string, std::string> commandlineArguments,cluon::OD
   , m_vehicleModelParameters()
   , m_stateCovP()
 {
-  setUp(commandlineArguments);
   m_odometryData << 0,0,0;
   m_acceleration << 0,0,0;
   m_states = Eigen::MatrixXd::Zero(6,1);
@@ -48,33 +47,31 @@ Kalman::Kalman(std::map<std::string, std::string> commandlineArguments,cluon::OD
   m_Q = Eigen::MatrixXd::Zero(6,6); //Six states
   m_R = Eigen::MatrixXd::Zero(7,7); //Seven Measurements
   m_stateCovP = Eigen::MatrixXd::Identity(6,6); //Initialize P
-
+  
+  setUp(commandlineArguments);
 }
 
 
 void Kalman::setUp(std::map<std::string, std::string> configuration)
 {
-
-
+	
 	  m_gpsReference[0] = static_cast<double>(std::stod(configuration["refLatitude"]));
 	  m_gpsReference[1] = static_cast<double>(std::stod(configuration["refLongitude"]));
 	  m_sampleTime = static_cast<double>(std::stod(configuration["sampleTime"]));
-	
-	  double const qX = static_cast<double>(std::stod(configuration["Qx"]));
-	  double const qY = static_cast<double>(std::stod(configuration["Qy"]));
-	  double const qVelX = static_cast<double>(std::stod(configuration["QvelX"]));
-	  double const qVelY = static_cast<double>(std::stod(configuration["QvelY"]));
-	  double const qYaw = static_cast<double>(std::stod(configuration["Qyaw"]));
-	  double const qHeading = static_cast<double>(std::stod(configuration["Qheading"]));
 
-	  m_Q << qX,0,0,0,0,0,
-	  		 0,qY,0,0,0,0,
-	  		 0,0,qVelX,0,0,0,
-	  		 0,0,0,qVelY,0,0,
-	  		 0,0,0,0,qYaw,0,
-	  		 0,0,0,0,0,qHeading;
+	  double qX = static_cast<double>(std::stod(configuration["Qx"]));
+	  double qY = static_cast<double>(std::stod(configuration["Qy"]));
+	  double qVelX = static_cast<double>(std::stod(configuration["QvelX"]));
+	  double qVelY = static_cast<double>(std::stod(configuration["QvelY"]));
+	  double qYaw = static_cast<double>(std::stod(configuration["Qyaw"]));
+	  double qHeading = static_cast<double>(std::stod(configuration["Qheading"]));
 
-	  //m_paramVecR << rX,rY,rVelX,rAccX,rAccY,rYaw,rHeading;
+		m_Q << qX,0,0,0,0,0,
+				0,qY,0,0,0,0,
+				0,0,qVelX,0,0,0,
+				0,0,0,qVelY,0,0,
+				0,0,0,0,qYaw,0,
+				0,0,0,0,0,qHeading;
 
 	  double const rX = static_cast<double>(std::stod(configuration["Rx"]));
 	  double const rY = static_cast<double>(std::stod(configuration["Ry"]));
@@ -164,6 +161,7 @@ void Kalman::nextRack(cluon::data::Envelope data){
   float rT = rackTravel.groundSteering();
   m_rackReceivedTime = data.sampleTimeStamp();
   m_delta = rackTravelToFrontWheelSteering(rT);
+  m_validRackMeasurements++;
 }
 
 void Kalman::setStateMachineStatus(cluon::data::Envelope data){
@@ -454,7 +452,7 @@ void Kalman::initializeModule(){
 	int validGroundspeedMeasurements = 0;
 	int validYawMeasurements = 0;
 	int validAccMeasurements = 0;
-	int validRackMeasurements = 0;
+	//int validRackMeasurements = 0;
 	bool gpsReadyState = false;
 	bool groundSpeedReadyState = false;
 	bool yawReadyState = false;
@@ -467,7 +465,7 @@ void Kalman::initializeModule(){
 	double lastYaw = 10000;
 	float lastAccX = 10000;
 	float lastAccY = 10000;
-	double lastRack = 10000;
+	//double lastRack = 10000;
 	while(!m_readyState){
 		bool sleep = true;
     	auto start = std::chrono::system_clock::now();
@@ -493,7 +491,7 @@ void Kalman::initializeModule(){
         	}
       	}
 
-      	if(validGpsMeasurements > 30){
+      	if(!gpsReadyState && validGpsMeasurements > 30){
         	gpsReadyState = true;
         	std::cout << "GPS Ready .." << std::endl;
       	}
@@ -505,16 +503,16 @@ void Kalman::initializeModule(){
       		validGroundspeedMeasurements++;
       	}
 
-      	if(validGroundspeedMeasurements > 30){
+      	if(!groundSpeedReadyState && validGroundspeedMeasurements > 30){
       		groundSpeedReadyState = true;
       		std::cout << "Groundspeed measurement Ready .." << std::endl;
       	}
 		//Check Yaw
-      	if(std::fabs(m_yawRate - lastYaw) > 0.001){
+      	if(std::fabs(m_yawRate - lastYaw) > 0.000001){
       		lastYaw = m_yawRate;
       		validYawMeasurements++;
       	}
-      	if(validYawMeasurements > 30){
+      	if(!yawReadyState && validYawMeasurements > 30){
       		yawReadyState = true;
       		std::cout << "Yaw measurement Ready .." << std::endl;
 
@@ -525,20 +523,19 @@ void Kalman::initializeModule(){
       		lastAccY = m_acceleration(1);
       		validAccMeasurements++;
       	}
-      	if(validAccMeasurements > 30){
+      	if(!accReadyState && validAccMeasurements > 30){
       		accReadyState = true;
       		std::cout << "Acc measurement Ready .." << std::endl;
       	}
       	//Rack
-      	if(std::fabs(m_delta - lastRack) > 0.001){
+      	/*if(std::fabs(m_delta - lastRack) > 0.001){
 
       		lastRack = m_delta;
       		validRackMeasurements++;
-      	}
-      	if(validRackMeasurements > 30){
+      	}*/
+      	if(!rackReadyState && m_validRackMeasurements > 30){
 
       		rackReadyState = true;
-
       		std::cout << "Rack measurement Ready .." << std::endl;
       	}
 

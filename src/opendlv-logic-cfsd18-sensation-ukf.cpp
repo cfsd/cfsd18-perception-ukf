@@ -43,11 +43,14 @@ int32_t main(int32_t argc, char **argv) {
     cluon::data::Envelope data;
     //std::shared_ptr<Slam> slammer = std::shared_ptr<Slam>(new Slam(10));
     cluon::OD4Session od4{static_cast<uint16_t>(std::stoi(commandlineArguments["cid"]))};
+
+    cluon::OD4Session od4Rack{static_cast<uint16_t>(std::stoi(commandlineArguments["cidRack"]))};
     Kalman kalman(commandlineArguments,od4);
     uint32_t estimationStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["estimationId"]));
     uint32_t ukfStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["id"])); 
     uint32_t stateMachineStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["stateMachineId"]));
 
+    uint32_t rackStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["rackId"]));
     auto poseEnvelope{[&ukf = kalman,senderStamp = estimationStamp](cluon::data::Envelope &&envelope)
       {
         if(envelope.senderStamp() == senderStamp){
@@ -79,7 +82,7 @@ int32_t main(int32_t argc, char **argv) {
         }
       }
     };
-    auto rackEnvelope{[&ukf = kalman, senderStamp = estimationStamp](cluon::data::Envelope &&envelope)
+    auto rackEnvelope{[&ukf = kalman, senderStamp = rackStamp](cluon::data::Envelope &&envelope)
       {
         if(envelope.senderStamp() == senderStamp){
           ukf.nextRack(envelope);
@@ -98,14 +101,14 @@ int32_t main(int32_t argc, char **argv) {
     od4.dataTrigger(opendlv::proxy::AngularVelocityReading::ID(),yawRateEnvelope);
     od4.dataTrigger(opendlv::proxy::GroundSpeedReading::ID(),groundSpeedEnvelope);
     od4.dataTrigger(opendlv::proxy::AccelerationReading::ID(),accelerationEnvelope);
-    od4.dataTrigger(opendlv::proxy::GroundSteeringReading::ID(),rackEnvelope);
+    od4Rack.dataTrigger(opendlv::proxy::GroundSteeringReading::ID(),rackEnvelope);
     od4.dataTrigger(opendlv::proxy::SwitchStateReading::ID(),stateMachineStatusEnvelope);
     
 
     // Just sleep as this microservice is data driven.
     using namespace std::literals::chrono_literals;
     bool readyState = false;
-    while (od4.isRunning()) {
+    while (od4.isRunning() && od4Rack.isRunning()) {
 
       if(readyState){
         opendlv::system::SignalStatusMessage ssm;
