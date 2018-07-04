@@ -49,14 +49,18 @@ void nextRack(cluon::data::Envelope data);
 bool getModuleState();
 void sendStates(uint32_t ukfStamp);
 void initializeModule();
-  void UKFPrediction();
-  void UKFUpdate();
+void UKFPrediction();
+void UKFUpdate();
+void checkVehicleState();
+bool getFilterInitState();
+void filterInitialization();
 
  private:
   void setUp(std::map<std::string, std::string> commandlineArguments);
 
   double rackTravelToFrontWheelSteering(float &rackTravel);
   double magicFormula(double &alpha, double &Fz, double const &mu);
+  double calculateHeading(double x, double y);
   Eigen::MatrixXd UKFWeights();
   Eigen::MatrixXd sigmaPoints(Eigen::MatrixXd &x);
   Eigen::MatrixXd vehicleModel(Eigen::MatrixXd x);
@@ -90,7 +94,7 @@ void initializeModule();
   double m_sampleTime;
   Eigen::MatrixXd m_vehicleModelParameters;
   Eigen::MatrixXd m_stateCovP;
-  Eigen::Vector2d m_wheelSpeed;
+  Eigen::Vector2f m_wheelSpeed;
   bool m_readyStateMachine = false;
   bool m_readyState = false;
   int m_validRackMeasurements = 0;
@@ -100,6 +104,28 @@ void initializeModule();
   int m_validWheelRightMeasurements = 0;
   uint32_t m_wheelIdLeft;
   uint32_t m_wheelIdRight;
+  bool m_filterInit = false;
+  std::vector<Eigen::Vector2d> m_positionVec = {};
+  float m_currentVelMean = 0;
+  float m_currentAccMean = 0;
+  double m_currentYawMean = 0;
+  double m_currentVelCov = 0;  
+  double m_currentAccCov = 0;
+  double m_currentYawCov = 0;
+  int m_velMeasurementCount = 0;  
+  int m_accMeasurementCount = 0;
+  int m_yawMeasurementCount = 0;
+  bool m_gotLeft = false;
+  bool m_gotRight = false;
+  bool m_zeroVelState = true;
+
+  double m_rX = 0;
+  double m_rY = 0;
+  double m_rVelX = 0;
+  double m_rAccX = 0;
+  double m_rAccY = 0;
+  double m_rYaw = 0;
+  double m_rHeading = 0;  
     // Constants for degree transformation
   const double DEG2RAD = 0.017453292522222; // PI/180.0
   const double RAD2DEG = 57.295779513082325; // 1.0 / DEG2RAD;

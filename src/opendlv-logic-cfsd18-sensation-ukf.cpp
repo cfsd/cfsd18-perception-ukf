@@ -111,6 +111,7 @@ int32_t main(int32_t argc, char **argv) {
     // Just sleep as this microservice is data driven.
     using namespace std::literals::chrono_literals;
     bool readyState = false;
+    int checkZeroVelocityUpdate = 0;
     while (od4.isRunning() && od4Dan.isRunning()) {
 
       if(readyState){
@@ -119,14 +120,24 @@ int32_t main(int32_t argc, char **argv) {
         cluon::data::TimeStamp sampleTime = cluon::time::now();
         od4.send(ssm, sampleTime ,ukfStamp);
         if(kalman.getStateMachineStatus()){
-          kalman.UKFUpdate();
-          kalman.UKFPrediction();
-          kalman.sendStates(ukfStamp);
+          
+          if(checkZeroVelocityUpdate > 20){
+            kalman.checkVehicleState();
+          }
+            kalman.UKFUpdate();
+            kalman.UKFPrediction();
+          if(kalman.getFilterInitState()){
+            kalman.sendStates(ukfStamp);
+          }else{
+            kalman.filterInitialization();
+          }
         }
       }else{
         kalman.initializeModule();
         readyState = kalman.getModuleState();
       }
+
+      checkZeroVelocityUpdate++;
       std::this_thread::sleep_for(0.05s);
       std::chrono::system_clock::time_point tp;
     }
