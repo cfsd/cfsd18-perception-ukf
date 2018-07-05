@@ -69,10 +69,10 @@ void filterInitialization();
 
   cluon::OD4Session &od4;
   Eigen::Vector3d m_odometryData;
-  Eigen::Vector3f m_acceleration;
+  Eigen::Vector3d m_acceleration;
   double m_yawRate = 0;
   double m_delta = 0;
-  float m_groundSpeed = 0;
+  double m_groundSpeed = 0;
 
   cluon::data::TimeStamp m_yawReceivedTime = {};
   cluon::data::TimeStamp m_groundSpeedReceivedTime = {};
@@ -91,23 +91,25 @@ void filterInitialization();
   Eigen::MatrixXd m_Q;
   Eigen::MatrixXd m_R;
   std::array<double,2> m_gpsReference;
-  double m_sampleTime;
   Eigen::MatrixXd m_vehicleModelParameters;
   Eigen::MatrixXd m_stateCovP;
   Eigen::Vector2f m_wheelSpeed;
-  bool m_readyStateMachine = false;
-  bool m_readyState = false;
   int m_validRackMeasurements = 0;
+
+  //Ready Variables
+  bool m_readyStateMachine = true; //Start false
+  bool m_readyState = true; //Start false
+  bool m_filterInit = true; //Start false
+  bool m_zeroVelState = true;
 
   int m_validGroundSpeedMeasurements = 0;
   int m_validWheelLeftMeasurements = 0;
   int m_validWheelRightMeasurements = 0;
   uint32_t m_wheelIdLeft;
   uint32_t m_wheelIdRight;
-  bool m_filterInit = false;
   std::vector<Eigen::Vector2d> m_positionVec = {};
-  float m_currentVelMean = 0;
-  float m_currentAccMean = 0;
+  double m_currentVelMean = 0;
+  double m_currentAccMean = 0;
   double m_currentYawMean = 0;
   double m_currentVelCov = 0;  
   double m_currentAccCov = 0;
@@ -117,7 +119,7 @@ void filterInitialization();
   int m_yawMeasurementCount = 0;
   bool m_gotLeft = false;
   bool m_gotRight = false;
-  bool m_zeroVelState = true;
+  
 
   double m_rX = 0;
   double m_rY = 0;

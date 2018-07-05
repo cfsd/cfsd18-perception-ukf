@@ -124,8 +124,9 @@ int32_t main(int32_t argc, char **argv) {
           if(checkZeroVelocityUpdate > 20){
             kalman.checkVehicleState();
           }
+            kalman.UKFPrediction();          
             kalman.UKFUpdate();
-            kalman.UKFPrediction();
+            
           if(kalman.getFilterInitState()){
             kalman.sendStates(ukfStamp);
           }else{
