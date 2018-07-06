@@ -94,12 +94,13 @@ void filterInitialization();
   Eigen::MatrixXd m_vehicleModelParameters;
   Eigen::MatrixXd m_stateCovP;
   Eigen::Vector2f m_wheelSpeed;
+  double m_maxSpeed = 0;
   int m_validRackMeasurements = 0;
 
   //Ready Variables
-  bool m_readyStateMachine = true; //Start false
-  bool m_readyState = true; //Start false
-  bool m_filterInit = true; //Start false
+  bool m_readyStateMachine = false; //Start false
+  bool m_readyState = false; //Start false
+  bool m_filterInit = false; //Start false
   bool m_zeroVelState = true;
 
   int m_validGroundSpeedMeasurements = 0;

@@ -131,9 +131,7 @@ void Kalman::nextPose(cluon::data::Envelope data){
 
   double longitude = odometry.longitude();
   double latitude = odometry.latitude();
-  Eigen::Vector2d tempPos;
-  tempPos << latitude,longitude;
-  m_positionVec.push_back(tempPos);
+ 
   //toCartesian(const std::array<double, 2> &WGS84Reference, const std::array<double, 2> &WGS84Position)
 
   std::array<double,2> WGS84ReadingTemp;
@@ -142,12 +140,19 @@ void Kalman::nextPose(cluon::data::Envelope data){
   WGS84ReadingTemp[1] = longitude;
 
   std::array<double,2> WGS84Reading = wgs84::toCartesian(m_gpsReference, WGS84ReadingTemp); 
+   if(!m_filterInit && !m_zeroVelState){
+  	Eigen::Vector2d tempPos;
+  	tempPos << WGS84ReadingTemp[0],WGS84ReadingTemp[1];
+  	m_positionVec.push_back(tempPos);
+  }
   //opendlv::data::environment::WGS84Coordinate gpsCurrent = opendlv::data::environment::WGS84Coordinate(latitude, longitude);
   //opendlv::data::environment::Point3 gpsTransform = m_gpsReference.transform(gpsCurrent);
   double heading = calculateHeading(WGS84Reading[0],WGS84Reading[0]);
   m_odometryData << WGS84Reading[0],
                     WGS84Reading[1],
-                    heading;                 
+                    heading;            
+  
+  //std::cout << std::fixed << std::setprecision(9) << m_odometryData(0) << " | " << m_odometryData(1) << std::endl;					     
 }
 
 void Kalman::nextGroundSpeed(cluon::data::Envelope data){
@@ -172,6 +177,10 @@ void Kalman::nextGroundSpeed(cluon::data::Envelope data){
   		m_velMeasurementCount++;
 		if(!m_readyState){
 			m_validGroundSpeedMeasurements++;
+		}
+		if(!m_filterInit && !m_zeroVelState){
+
+			if(m_groundSpeed > m_maxSpeed){ m_maxSpeed = m_groundSpeed;}
 		}
   	}	
    //std::cout << "Yaw in message: " << m_yawRate << std::endl;
@@ -455,16 +464,21 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 
 	Eigen::MatrixXd xdot = Eigen::MatrixXd::Zero(x.rows(),1);
 
-	double alphaF = std::atan( (m_vehicleModelParameters(4)*x(4) + x(3) )/x(2)) - m_delta;
-	double alphaR = std::atan( (x(3)-m_vehicleModelParameters(5)*x(4))/x(2));
-	//double ce = m_vehicleModelParameters(4)*x(4) + x(3);
-	//Non linear Tire Model
+	double alphaF = 0.0;
+	double alphaR = 0.0;
+	if(!m_zeroVelState){
+		alphaF = std::atan( (m_vehicleModelParameters(4)*x(4) + x(3) )/x(2)) - m_delta;
+		alphaR = std::atan( (x(3)-m_vehicleModelParameters(5)*x(4))/x(2));
+		//double ce = m_vehicleModelParameters(4)*x(4) + x(3);
 
-	//double Fzf = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(4)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
-	//double Fzr = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(3)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
+		//Non linear Tire Model
 
-    alphaF = (std::fabs(alphaF) > 0.002)?(0):(alphaF);
-    alphaR = (std::fabs(alphaR) > 0.002)?(0):(alphaR);
+		//double Fzf = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(4)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
+		//double Fzr = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(3)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
+
+    	alphaF = (std::fabs(alphaF) > 0.002)?(0):(alphaF);
+    	alphaR = (std::fabs(alphaR) > 0.002)?(0):(alphaR);
+	}
 	
 	//std::cout << "from vehicle model: " << alphaF << " | " << alphaR << " | " << ce << std::endl;
 	double Fyf = 20000*alphaF; //magicFormula(alphaF,Fzf,m_vehicleModelParameters(5));
@@ -513,18 +527,22 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
 	std::lock_guard<std::mutex> lockDelta(m_deltaMutex);
 	
 	Eigen::MatrixXd hx = Eigen::MatrixXd::Zero(7,1);
-	double alphaF = std::atan( (m_vehicleModelParameters(4)*x(4) + x(3) )/x(2)) - m_delta;
-	double alphaR = std::atan( (x(3)-m_vehicleModelParameters(5)*x(4))/x(2));
-	//double ce = m_vehicleModelParameters(4)*x(4) + x(3);
 
-	//Non linear Tire Model
+	double alphaF = 0;
+	double alphaR = 0;
+	if(!m_zeroVelState){
+		alphaF = std::atan( (m_vehicleModelParameters(4)*x(4) + x(3) )/x(2)) - m_delta;
+		alphaR = std::atan( (x(3)-m_vehicleModelParameters(5)*x(4))/x(2));
+		//double ce = m_vehicleModelParameters(4)*x(4) + x(3);
 
-	//double Fzf = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(4)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
-	//double Fzr = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(3)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
+		//Non linear Tire Model
 
-    alphaF = (std::fabs(alphaF) > 0.002)?(0):(alphaF);
-    alphaR = (std::fabs(alphaR) > 0.002)?(0):(alphaR);
+		//double Fzf = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(4)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
+		//double Fzr = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(3)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
 
+    	alphaF = (std::fabs(alphaF) > 0.002)?(0):(alphaF);
+    	alphaR = (std::fabs(alphaR) > 0.002)?(0):(alphaR);
+	}
 	//std::cout << "from measurement model: " << alphaF << " | " << alphaR <<" | " << ce << std::endl;
 	double Fyf = 20000*alphaF; //magicFormula(alphaF,Fzf,m_vehicleModelParameters(5));
 	double Fyr =  20000*alphaR;//magicFormula(alphaR,Fzr,m_vehicleModelParameters(5));
@@ -765,15 +783,16 @@ bool Kalman::getFilterInitState(){
 }
 void Kalman::filterInitialization(){
 
-
 	if(!m_zeroVelState && !m_filterInit){
-
-		m_filterInit = true;
-
+		uint32_t maxIndex = m_positionVec.size()-1;
+		double distance = std::sqrt( (m_positionVec[0](1)-m_positionVec[maxIndex](1))*(m_positionVec[0](1)-m_positionVec[maxIndex](1)) + (m_positionVec[0](1) - m_positionVec[maxIndex](1)) * ( m_positionVec[0](1)-m_positionVec[maxIndex](1)) );
+		if(m_maxSpeed > 1 && distance > 5){			
+			m_filterInit = true;
+			std::cout << "UKF Filtering Initialized ..." << std::endl;
+			m_positionVec.clear();
+		}
 	}
 	
-
-
 }
 
 void Kalman::tearDown()
