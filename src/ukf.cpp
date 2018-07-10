@@ -57,7 +57,7 @@ Kalman::Kalman(std::map<std::string, std::string> commandlineArguments,cluon::OD
 				 0,1,0,0,0,0,
 				 0,0,0.1,0,0,0,
 				 0,0,0,0.0001,0,0,
-				 0,0,0,0,0.1,0,
+				 0,0,0,0,0.01,0,
 				 0,0,0,0,0,0.1;
   m_wheelSpeed << 0,0;	
   m_lastPos << 0,0;
@@ -449,7 +449,7 @@ void Kalman::UKFUpdate()
 		 		 m_acceleration(0),
 		 		 m_acceleration(1),
 		 		 m_yawRate,
-		 		 m_odometryData(2);
+		 		 m_odometryData(2)+m_yawRate;
 		}	
 	}
 
@@ -839,7 +839,7 @@ void Kalman::filterInitialization(){
 		m_ekfStartHeadingCloser = true;
 	}
 	
-	if(m_ekfStartHeadingInitiated && !m_zeroVelState && !m_filterInit && m_positionVec.size() > 10){
+	if(m_ekfStartHeadingInitiated && !m_zeroVelState && !m_filterInit && m_positionVec.size() > 1){
 		uint32_t maxIndex = m_positionVec.size()-1;
 		double distance = 0;
 		for(uint32_t i = 0; i < maxIndex; i++){
