@@ -40,6 +40,7 @@ public:
   ~Kalman();
 
 void nextPose(cluon::data::Envelope data);
+void nextHeading(cluon::data::Envelope data);
 void nextGroundSpeed(cluon::data::Envelope data);
 void nextYawRate(cluon::data::Envelope data);
 void nextAcceleration(cluon::data::Envelope data);
@@ -60,7 +61,7 @@ void filterInitialization();
 
   double rackTravelToFrontWheelSteering(float &rackTravel);
   double magicFormula(double &alpha, double &Fz, double const &mu);
-  double calculateHeading(double x, double y);
+  double calculateHeading(double x1, double y1,double x2,double y2);
   Eigen::MatrixXd UKFWeights();
   Eigen::MatrixXd sigmaPoints(Eigen::MatrixXd &x);
   Eigen::MatrixXd vehicleModel(Eigen::MatrixXd x);
@@ -73,11 +74,14 @@ void filterInitialization();
   double m_yawRate = 0;
   double m_delta = 0;
   double m_groundSpeed = 0;
-
   cluon::data::TimeStamp m_yawReceivedTime = {};
+  cluon::data::TimeStamp m_lastYawReceivedTime = {};
   cluon::data::TimeStamp m_groundSpeedReceivedTime = {};
+  cluon::data::TimeStamp m_lastGroundSpeedReceivedTime = {};
   cluon::data::TimeStamp m_geolocationReceivedTime ={};
+  cluon::data::TimeStamp m_lastGeolocationReceivedTime ={};
   cluon::data::TimeStamp m_accReceivedTime ={};
+  cluon::data::TimeStamp m_lastAccReceivedTime ={};
   cluon::data::TimeStamp m_rackReceivedTime ={};
   cluon::data::TimeStamp m_wheelReceivedTime ={};
   std::mutex m_poseMutex;
@@ -87,6 +91,7 @@ void filterInitialization();
   std::mutex m_accMutex;
   std::mutex m_deltaMutex;
   std::mutex m_wheelMutex;
+  std::mutex m_initMutex;
   Eigen::MatrixXd m_states;
   Eigen::MatrixXd m_Q;
   Eigen::MatrixXd m_R;
@@ -94,11 +99,14 @@ void filterInitialization();
   Eigen::MatrixXd m_vehicleModelParameters;
   Eigen::MatrixXd m_stateCovP;
   Eigen::Vector2f m_wheelSpeed;
+  Eigen::Vector2d m_lastPos;
   double m_maxSpeed = 0;
   int m_validRackMeasurements = 0;
-
+  double m_startHeading = 0;
+  double m_startHeadingEkf = 0;
+  int m_headingEkfInitCounter = 0;
   //Ready Variables
-  bool m_readyStateMachine = false; //Start false
+  bool m_readyStateMachine = true; //Start false
   bool m_readyState = false; //Start false
   bool m_filterInit = false; //Start false
   bool m_zeroVelState = true;
@@ -106,9 +114,11 @@ void filterInitialization();
   int m_validGroundSpeedMeasurements = 0;
   int m_validWheelLeftMeasurements = 0;
   int m_validWheelRightMeasurements = 0;
+  int m_validHeadingMeasurements = 0;
   uint32_t m_wheelIdLeft;
   uint32_t m_wheelIdRight;
   std::vector<Eigen::Vector2d> m_positionVec = {};
+  std::vector<double> m_filterInitYaw = {};
   double m_currentVelMean = 0;
   double m_currentAccMean = 0;
   double m_currentYawMean = 0;
@@ -120,6 +130,9 @@ void filterInitialization();
   int m_yawMeasurementCount = 0;
   bool m_gotLeft = false;
   bool m_gotRight = false;
+  double const m_alphaConst = 20000;
+  bool m_ekfStartHeadingInitiated = false;
+  bool m_ekfStartHeadingCloser = false;
   
 
   double m_rX = 0;

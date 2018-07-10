@@ -49,21 +49,23 @@ int32_t main(int32_t argc, char **argv) {
     uint32_t estimationStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["estimationId"]));
 
     uint32_t estimationStampRaw = static_cast<uint32_t>(std::stoi(commandlineArguments["estimationIdRaw"]));
+
     uint32_t ukfStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["id"])); 
     uint32_t stateMachineStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["stateMachineId"]));
     uint32_t rackStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["rackId"]));
     uint32_t wheelIdLeft = static_cast<uint32_t>(std::stoi(commandlineArguments["wheelEncoderIdLeft"]));
     uint32_t wheelIdRight = static_cast<uint32_t>(std::stoi(commandlineArguments["wheelEncoderIdRight"]));
 
-    auto poseEnvelope{[&ukf = kalman,senderStamp = estimationStampRaw](cluon::data::Envelope &&envelope)
+    auto poseEnvelope{[&ukf = kalman,senderStamp = estimationStampRaw, senderEkf = estimationStamp](cluon::data::Envelope &&envelope)
       {
         
         if(envelope.senderStamp() == senderStamp){
           ukf.nextPose(envelope);
+        }else if(envelope.senderStamp() == senderEkf){
+          ukf.nextHeading(envelope);
         }
       } 
     };
-
     auto yawRateEnvelope{[&ukf = kalman, senderStamp = estimationStamp](cluon::data::Envelope &&envelope)
       {
         if(envelope.senderStamp() == senderStamp){
@@ -126,6 +128,7 @@ int32_t main(int32_t argc, char **argv) {
           
           if(checkZeroVelocityUpdate > 20){
             kalman.checkVehicleState();
+            checkZeroVelocityUpdate = 0;
           }
             kalman.UKFPrediction();          
             kalman.UKFUpdate();
