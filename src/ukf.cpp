@@ -145,7 +145,7 @@ void Kalman::nextPose(cluon::data::Envelope data){
   WGS84ReadingTemp[1] = longitude;
 
   std::array<double,2> WGS84Reading = wgs84::toCartesian(m_gpsReference, WGS84ReadingTemp); 
-   if(!m_filterInit && !m_zeroVelState){
+   if(!m_zeroVelState && !m_filterInit){
   	Eigen::Vector2d tempPos;
   	tempPos << WGS84Reading[0],WGS84Reading[1];
   	m_positionVec.push_back(tempPos);
@@ -206,7 +206,7 @@ void Kalman::nextYawRate(cluon::data::Envelope data){
    m_currentYawMean += m_yawRate;
    m_yawMeasurementCount++;
    //std::cout << "yaw: " << m_yawRate << std::endl;
-   if(!m_filterInit && !m_zeroVelState){	
+   if(!m_zeroVelState && !m_filterInit){	
    	m_filterInitYaw.push_back(m_yawRate);
 	   
    }	   
@@ -220,7 +220,7 @@ void Kalman::nextAcceleration(cluon::data::Envelope data){
   m_acceleration(1) = static_cast<double>(acceleration.accelerationY());
   m_acceleration(2) = static_cast<double>(acceleration.accelerationZ());
   m_accReceivedTime = data.sampleTimeStamp();
-
+  //std::cout << "acc Y: " << m_acceleration(1) << std::endl;
   m_currentAccMean += m_acceleration(0);
   m_accMeasurementCount++;
 }
@@ -272,10 +272,10 @@ bool Kalman::getModuleState(){
 double Kalman::rackTravelToFrontWheelSteering(float &rackTravel)
 {
 
-	float const rackTravelToSteeringAngleLineSlope = 1.225f;
+	float const rackTravelToSteeringAngleLineSlope = 0.02173913f;
 
-	double delta = static_cast<double>(rackTravelToSteeringAngleLineSlope*rackTravel*3.14159/180);
-	delta = delta - 0.042;
+	double delta = static_cast<double>(rackTravelToSteeringAngleLineSlope*rackTravel);
+	delta = delta + 0.042;
 	//std::cout << "delta: " << delta << std::endl;
 	return delta;
 }
@@ -449,7 +449,7 @@ void Kalman::UKFUpdate()
 		 		 m_acceleration(0),
 		 		 m_acceleration(1),
 		 		 m_yawRate,
-		 		 m_odometryData(2)+m_yawRate;
+		 		 m_odometryData(2);
 		}	
 	}
 
@@ -487,8 +487,8 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 	double alphaF = 0.0;
 	double alphaR = 0.0;
 	if(!m_zeroVelState){
-		alphaF = std::atan( (m_vehicleModelParameters(4)*x(4) + x(3) )/x(2)) - m_delta;
-		alphaR = std::atan( (x(3)-m_vehicleModelParameters(5)*x(4))/x(2));
+		alphaF = m_delta - std::atan( (m_vehicleModelParameters(4)*x(4) + x(3) )/x(2));
+		alphaR = -std::atan( (x(3)-m_vehicleModelParameters(5)*x(4))/x(2));
 		//double ce = m_vehicleModelParameters(4)*x(4) + x(3);
 
 		//Non linear Tire Model
@@ -496,8 +496,8 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 		//double Fzf = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(4)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
 		//double Fzr = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(3)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
 
-    	alphaF = (std::fabs(alphaF) > 0.0002)?(0):(alphaF);
-    	alphaR = (std::fabs(alphaR) > 0.0002)?(0):(alphaR);
+    	alphaF = (std::fabs(alphaF) < 0.02)?(0):(alphaF);
+    	alphaR = (std::fabs(alphaR) < 0.02)?(0):(alphaR);
 	}
 	
 	//std::cout << "from vehicle model: " << alphaF << " | " << alphaR << " | " << ce << std::endl;
@@ -518,24 +518,24 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 	//double tm = 0.05;
 	//Position
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_groundSpeedReceivedTime,m_lastGroundSpeedReceivedTime)));
-	timeElapsed = (timeElapsed/100000 > 0.1)?(0.1):(timeElapsed/1000000);
+	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
     xdot(0) = xdot(0)*timeElapsed;
     xdot(1) = xdot(1)*timeElapsed;
 	m_lastGroundSpeedReceivedTime = m_groundSpeedReceivedTime;
     //Velocity    
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_accReceivedTime,m_lastAccReceivedTime)));
-	timeElapsed = (timeElapsed/100000 > 0.1)?(0.1):(timeElapsed/1000000);
+	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
     xdot(2) = xdot(2)*timeElapsed;
     xdot(3) = xdot(3)*timeElapsed;
 	m_lastAccReceivedTime = m_accReceivedTime;
     //Yaw   
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_yawReceivedTime,m_lastYawReceivedTime)));
-	timeElapsed = (timeElapsed/100000 > 0.1)?(0.1):(timeElapsed/1000000);
+	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
     xdot(4) = xdot(4)*timeElapsed;
 	m_lastYawReceivedTime = m_yawReceivedTime;
     //Heading
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_geolocationReceivedTime,m_lastGeolocationReceivedTime)));
-	timeElapsed = (timeElapsed/100000 > 0.1)?(0.1):(timeElapsed/1000000);
+	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
     xdot(5) = xdot(5)*timeElapsed;
 	m_lastGeolocationReceivedTime = m_geolocationReceivedTime;
 	//std::cout << "TM: " << timeElapsed << std::endl;
@@ -556,8 +556,8 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
 	double alphaF = 0;
 	double alphaR = 0;
 	if(!m_zeroVelState){
-		alphaF = std::atan( (m_vehicleModelParameters(4)*x(4) + x(3) )/x(2)) - m_delta;
-		alphaR = std::atan( (x(3)-m_vehicleModelParameters(5)*x(4))/x(2));
+		alphaF = m_delta - std::atan( (m_vehicleModelParameters(4)*x(4) + x(3) )/x(2));
+		alphaR = -std::atan( (x(3)-m_vehicleModelParameters(5)*x(4))/x(2));
 		//double ce = m_vehicleModelParameters(4)*x(4) + x(3);
 
 		//Non linear Tire Model
@@ -565,8 +565,8 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
 		//double Fzf = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(4)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
 		//double Fzr = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(3)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
 
-    	alphaF = (std::fabs(alphaF) > 0.0002)?(0):(alphaF);
-    	alphaR = (std::fabs(alphaR) > 0.0002)?(0):(alphaR);
+    	alphaF = (std::fabs(alphaF) < 0.02)?(0):(alphaF);
+    	alphaR = (std::fabs(alphaR) < 0.02)?(0):(alphaR);
 	}
 	//std::cout << "from measurement model: " << alphaF << " | " << alphaR <<" | " << ce << std::endl;
 	double Fyf = m_alphaConst*alphaF; //magicFormula(alphaF,Fzf,m_vehicleModelParameters(5));
@@ -737,7 +737,7 @@ void Kalman::checkVehicleState(){
 
 	bool velCheck = false;
 	bool yawCheck = false;
-	bool accCheck = false;
+	//bool accCheck = false;
 	bool reset = false;
   	std::lock_guard<std::mutex> lockGroundSpeed(m_groundSpeedMutex);
 	std::lock_guard<std::mutex> lockAcc(m_accMutex);
@@ -751,20 +751,20 @@ void Kalman::checkVehicleState(){
   	}
 	if(m_velMeasurementCount > 12 && m_accMeasurementCount > 12 && m_yawMeasurementCount > 12 && !reset){
 
-		if(m_currentVelMean/m_velMeasurementCount < 0.5){
+		if(m_currentVelMean/m_velMeasurementCount < 0.2){
 			velCheck = true;
 		}
 
-		if(m_currentYawMean/m_yawMeasurementCount < 0.05){
+		if(m_currentYawMean/m_yawMeasurementCount < 0.001){
 
 			yawCheck = true;
 		}
 
-		if(m_currentAccMean/m_accMeasurementCount < 0.03){
+		/*if(m_currentAccMean/m_accMeasurementCount < 0.03){
 			accCheck = true;
-		}
+		}*/
 
-		if(velCheck && yawCheck && accCheck){
+		if(velCheck && yawCheck /*&& accCheck*/){
 			m_zeroVelState = true;
 			std::cout << "Zero Velocity Update Mode ..." << std::endl;
 		}else{
@@ -782,9 +782,9 @@ void Kalman::checkVehicleState(){
 		m_currentAccMean = 0;
 		m_yawMeasurementCount= 0;
 		m_currentYawMean = 0;
-
-		m_R <<  10,0,0,0,0,0,0,
-	  			0,10,0,0,0,0,0,
+		m_states(3) = 0;
+		m_R <<  0.2,0,0,0,0,0,0,
+	  			0,0.2,0,0,0,0,0,
 	  			0,0,0.01,0,0,0,0,
 	  			0,0,0,0.01,0,0,0,
 	  		 	0,0,0,0,0.01,0,0,
@@ -812,7 +812,38 @@ void Kalman::checkVehicleState(){
 
 	//Check last 1 seconds of velocities that it is close to zero
 
+	//Heading and Velocity Y correction
+	/*if(!m_zeroVelState && m_filterInit){
+		uint32_t maxIndex = m_positionVec.size()-1;
+		double distance = 0;
+		for(uint32_t i = 0; i < maxIndex; i++){
+			distance += std::sqrt( (m_positionVec[maxIndex-i-1](0)-m_positionVec[maxIndex-i](0))*(m_positionVec[maxIndex-i-1](0)-m_positionVec[maxIndex-i](0)) + (m_positionVec[maxIndex-i-1](1) - m_positionVec[maxIndex-i](1)) * ( m_positionVec[maxIndex-i-1](1)-m_positionVec[maxIndex-i](1)) );
 
+			if(distance > 2){
+				double yawMean = 0;
+				for(uint32_t j = 0; j < m_filterInitYaw.size(); j++){
+				
+					yawMean += m_filterInitYaw[j];
+				}
+				if(yawMean/m_filterInitYaw.size() > 0.01){
+					m_positionVec.clear();
+					m_filterInitYaw.clear();
+				}else{
+					
+					//double heading  = calculateHeading(m_positionVec[maxIndex-i](0),m_positionVec[maxIndex-i](1),m_positionVec[maxIndex](0),m_positionVec[maxIndex](1));	
+					//if(std::fabs(heading - m_odometryData(2)) > 0.0523599){
+
+						//m_startHeading = heading;
+						//m_startHeadingEkf = m_odometryData(2);
+						m_states(3) = 0;	
+						std::cout << "Heading & Y Velocity Corrected ..." <<   std::endl;
+						m_positionVec.clear();
+						break;
+					//}
+				}
+			}
+		}
+	}*/	
 
 }
 
@@ -845,7 +876,7 @@ void Kalman::filterInitialization(){
 		for(uint32_t i = 0; i < maxIndex; i++){
 			distance += std::sqrt( (m_positionVec[maxIndex-i-1](0)-m_positionVec[maxIndex-i](0))*(m_positionVec[maxIndex-i-1](0)-m_positionVec[maxIndex-i](0)) + (m_positionVec[maxIndex-i-1](1) - m_positionVec[maxIndex-i](1)) * ( m_positionVec[maxIndex-i-1](1)-m_positionVec[maxIndex-i](1)) );
 
-			if(distance > 3){
+			if(distance > 1){
 				double yawMean = 0;
 				for(uint32_t j = 0; j < m_filterInitYaw.size(); j++){
 				
