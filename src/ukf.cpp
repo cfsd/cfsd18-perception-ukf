@@ -496,8 +496,8 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 		//double Fzf = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(4)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
 		//double Fzr = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(3)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
 
-    	alphaF = (std::fabs(alphaF) < 0.02)?(0):(alphaF);
-    	alphaR = (std::fabs(alphaR) < 0.02)?(0):(alphaR);
+    	alphaF = (std::fabs(alphaF) > 0.02)?(0.02):(alphaF);
+    	alphaR = (std::fabs(alphaR) > 0.02)?(0.02):(alphaR);
 	}
 	
 	//std::cout << "from vehicle model: " << alphaF << " | " << alphaR << " | " << ce << std::endl;
@@ -565,8 +565,8 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
 		//double Fzf = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(4)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
 		//double Fzr = m_vehicleModelParameters(0)*m_vehicleModelParameters(2)*(m_vehicleModelParameters(3)/(m_vehicleModelParameters(4)+m_vehicleModelParameters(3)));
 
-    	alphaF = (std::fabs(alphaF) < 0.02)?(0):(alphaF);
-    	alphaR = (std::fabs(alphaR) < 0.02)?(0):(alphaR);
+    	alphaF = (std::fabs(alphaF) > 0.02)?(0.02):(alphaF);
+    	alphaR = (std::fabs(alphaR) > 0.02)?(0.02):(alphaR);
 	}
 	//std::cout << "from measurement model: " << alphaF << " | " << alphaR <<" | " << ce << std::endl;
 	double Fyf = m_alphaConst*alphaF; //magicFormula(alphaF,Fzf,m_vehicleModelParameters(5));
