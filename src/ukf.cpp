@@ -449,7 +449,7 @@ void Kalman::UKFUpdate()
 		 		 m_acceleration(0),
 		 		 m_acceleration(1),
 		 		 m_yawRate,
-		 		 m_odometryData(2);
+		 		 m_odometryData(2) + m_yawRate*1.3;
 		}	
 	}
 
