@@ -163,7 +163,22 @@ void Kalman::nextHeading(cluon::data::Envelope data){
   m_geolocationReceivedTime = data.sampleTimeStamp();
   auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
   double heading = static_cast<double>(odometry.heading());
-  m_odometryData(2) = heading;
+  if(m_filterInit){
+	double headingDiff = m_lastHeadingMeasurement - heading;
+ 	m_lastHeadingMeasurement = heading;
+  	if(headingDiff>PI){
+	  //heading = heading + 2*PI;
+	  m_laps++;
+  	}
+  	else if(headingDiff < -PI){
+	  //heading = heading - 2*PI;
+	  m_laps--;
+  	}
+  	heading = heading - (m_startHeadingEkf - m_startHeading);
+	//heading = (heading > PI)?(heading-2*PI):(heading);
+	//heading = (heading < -PI)?(heading+2*PI):(heading);
+  }
+  m_odometryData(2) = heading+m_laps*2*PI;
 
   if(!m_readyState){
 	  m_validHeadingMeasurements++;
@@ -447,9 +462,9 @@ void Kalman::UKFUpdate()
 		 		 m_odometryData(1),
 		 		 m_groundSpeed,
 		 		 m_acceleration(0),
-		 		 m_acceleration(1),
+		 		 0,
 		 		 m_yawRate,
-		 		 m_odometryData(2) + m_yawRate*1.3;
+		 		 m_odometryData(2) + m_yawRate*0.7;
 		}	
 	}
 
@@ -487,8 +502,8 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 	double alphaF = 0.0;
 	double alphaR = 0.0;
 	if(!m_zeroVelState){
-		alphaF = m_delta - std::atan( (m_vehicleModelParameters(4)*x(4) + x(3) )/x(2));
-		alphaR = -std::atan( (x(3)-m_vehicleModelParameters(5)*x(4))/x(2));
+		alphaF = m_delta - std::atan( (m_vehicleModelParameters(4)*x(4) + 0 )/x(2));
+		alphaR = -std::atan( (0-m_vehicleModelParameters(5)*x(4))/x(2));
 		//double ce = m_vehicleModelParameters(4)*x(4) + x(3);
 
 		//Non linear Tire Model
@@ -506,9 +521,9 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 
 
 	xdot << x(2),
-			x(3),
-			-Fyf*std::sin(m_delta)/m_vehicleModelParameters(0) + x(4)*x(3),
-			(Fyf*std::cos(m_delta)+Fyr)/m_vehicleModelParameters(0) - x(4)*x(2),
+			0,
+			-Fyf*std::sin(m_delta)/m_vehicleModelParameters(0) + x(4)*0,
+			0,
 			(m_vehicleModelParameters(4)*Fyf*std::cos(m_delta)-m_vehicleModelParameters(5)*Fyr)/m_vehicleModelParameters(1),
 			x(4);
 
@@ -516,34 +531,39 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 	double timeElapsed;
 	//cluon::data::TimeStamp currentTime = cluon::time::now();
 	//double tm = 0.05;
+    //Heading
+    timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_geolocationReceivedTime,m_lastGeolocationReceivedTime)));
+	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
+    x(5) = x(5) + xdot(5)*timeElapsed;
+	double heading = x(5) - (m_startHeadingEkf-m_startHeading);
+	//heading = (heading > PI)?(heading-2*PI):(heading);
+	//heading = (heading < -PI)?(heading+2*PI):(heading);
+
+	/*heading = heading - (m_startHeadingEkf - m_startHeading);
+	heading = (heading > PI)?(heading-2*PI):(heading);
+	heading = (heading < -PI)?(heading+2*PI):(heading);*/
+	m_lastGeolocationReceivedTime = m_geolocationReceivedTime;
 	//Position
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_groundSpeedReceivedTime,m_lastGroundSpeedReceivedTime)));
 	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
-    xdot(0) = xdot(0)*timeElapsed;
-    xdot(1) = xdot(1)*timeElapsed;
+	double dx = xdot(0)*timeElapsed; 
+    x(0) = x(0) + dx*std::cos(heading);
+    x(1) = x(1) + dx*std::sin(heading);
 	m_lastGroundSpeedReceivedTime = m_groundSpeedReceivedTime;
     //Velocity    
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_accReceivedTime,m_lastAccReceivedTime)));
 	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
-    xdot(2) = xdot(2)*timeElapsed;
-    xdot(3) = xdot(3)*timeElapsed;
+    x(2) = x(2) + xdot(2)*timeElapsed;
+    x(3) = 0;
 	m_lastAccReceivedTime = m_accReceivedTime;
     //Yaw   
-    timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_yawReceivedTime,m_lastYawReceivedTime)));
-	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
-    xdot(4) = xdot(4)*timeElapsed;
+    //timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_yawReceivedTime,m_lastYawReceivedTime)));
+	//timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
+    x(4) = x(4) + xdot(4)*1;
 	m_lastYawReceivedTime = m_yawReceivedTime;
-    //Heading
-    timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_geolocationReceivedTime,m_lastGeolocationReceivedTime)));
-	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
-    xdot(5) = xdot(5)*timeElapsed;
-	m_lastGeolocationReceivedTime = m_geolocationReceivedTime;
 	//std::cout << "TM: " << timeElapsed << std::endl;
-	
-    //Update states
-	Eigen::MatrixXd fx = x + xdot;
 
-	return fx;
+	return x;
 }
 
 Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
@@ -556,8 +576,8 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
 	double alphaF = 0;
 	double alphaR = 0;
 	if(!m_zeroVelState){
-		alphaF = m_delta - std::atan( (m_vehicleModelParameters(4)*x(4) + x(3) )/x(2));
-		alphaR = -std::atan( (x(3)-m_vehicleModelParameters(5)*x(4))/x(2));
+		alphaF = m_delta - std::atan( (m_vehicleModelParameters(4)*x(4) + 0 )/x(2));
+		alphaR = -std::atan( (0 -m_vehicleModelParameters(5)*x(4))/x(2));
 		//double ce = m_vehicleModelParameters(4)*x(4) + x(3);
 
 		//Non linear Tire Model
@@ -570,13 +590,13 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
 	}
 	//std::cout << "from measurement model: " << alphaF << " | " << alphaR <<" | " << ce << std::endl;
 	double Fyf = m_alphaConst*alphaF; //magicFormula(alphaF,Fzf,m_vehicleModelParameters(5));
-	double Fyr =  m_alphaConst*alphaR;//magicFormula(alphaR,Fzr,m_vehicleModelParameters(5));
+	//double Fyr =  m_alphaConst*alphaR;//magicFormula(alphaR,Fzr,m_vehicleModelParameters(5));
 	
 	hx << x(0),
 		  x(1),
 		  x(2),
-		  0 , //-Fyf*std::sin(m_delta)/m_vehicleModelParameters(0)
-		  (Fyf*std::cos(m_delta)+Fyr)/m_vehicleModelParameters(0),
+		  -Fyf*std::sin(m_delta)/m_vehicleModelParameters(0),
+		  0, //(Fyf*std::cos(m_delta)+Fyr)/m_vehicleModelParameters(0),
 		  x(4),
 		  x(5);
 
@@ -597,12 +617,17 @@ void Kalman::sendStates(uint32_t ukfStamp){
     poseMessage.latitude(m_states(1)); //sendGPS[0]
 
 	double heading = m_states(5); // - (m_startHeadingEkf-m_startHeading);
-	heading = (heading > PI)?(heading-2*PI):(heading);
-	heading = (heading < -PI)?(heading+2*PI):(heading);
+	while(heading > PI || heading < -PI){
+		heading = (heading > PI)?(heading-2*PI):(heading);
+		heading = (heading < -PI)?(heading+2*PI):(heading);
+	}
+	//m_states(5) = heading;
 
-	heading = heading - (m_startHeadingEkf - m_startHeading);
+	/*heading = heading - (m_startHeadingEkf - m_startHeading);
 	heading = (heading > PI)?(heading-2*PI):(heading);
 	heading = (heading < -PI)?(heading+2*PI):(heading);
+    poseMessage.heading(static_cast<float>(heading));*/
+
     poseMessage.heading(static_cast<float>(heading));
     //std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
     cluon::data::TimeStamp sampleTime = m_geolocationReceivedTime;
@@ -887,6 +912,7 @@ void Kalman::filterInitialization(){
 					m_filterInitYaw.clear();
 				}else{
 					m_startHeading = calculateHeading(m_positionVec[maxIndex-i](0),m_positionVec[maxIndex-i](1),m_positionVec[maxIndex](0),m_positionVec[maxIndex](1));		
+					m_states(5) = m_startHeading;
 					m_filterInit = true;
 					std::cout << "UKF Filtering Initialized ..." <<  " Start Heading; " << m_startHeading << std::endl;
 					m_positionVec.clear();

@@ -74,6 +74,8 @@ void filterInitialization();
   double m_yawRate = 0;
   double m_delta = 0;
   double m_groundSpeed = 0;
+  double m_lastHeadingMeasurement = 0;
+  int m_laps = 0;
   cluon::data::TimeStamp m_yawReceivedTime = {};
   cluon::data::TimeStamp m_lastYawReceivedTime = {};
   cluon::data::TimeStamp m_groundSpeedReceivedTime = {};
@@ -106,7 +108,7 @@ void filterInitialization();
   double m_startHeadingEkf = 0;
   int m_headingEkfInitCounter = 0;
   //Ready Variables
-  bool m_readyStateMachine = false; //Start false
+  bool m_readyStateMachine = true; //Start false
   bool m_readyState = false; //Start false
   bool m_filterInit = false; //Start false
   bool m_zeroVelState = true;
