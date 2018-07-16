@@ -106,7 +106,7 @@ void filterInitialization();
   double m_startHeadingEkf = 0;
   int m_headingEkfInitCounter = 0;
   //Ready Variables
-  bool m_readyStateMachine = false; //Start false
+  bool m_readyStateMachine = true; //Start false
   bool m_readyState = false; //Start false
   bool m_filterInit = false; //Start false
   bool m_zeroVelState = true;
