@@ -163,6 +163,11 @@ void Kalman::nextHeading(cluon::data::Envelope data){
   m_geolocationReceivedTime = data.sampleTimeStamp();
   auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
   double heading = static_cast<double>(odometry.heading());
+  if(m_filterInit){
+  	heading = heading - (m_startHeadingEkf - m_startHeading);
+	heading = (heading > PI)?(heading-2*PI):(heading);
+	heading = (heading < -PI)?(heading+2*PI):(heading);
+  }
   m_odometryData(2) = heading;
 
   if(!m_readyState){
@@ -520,13 +525,20 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_geolocationReceivedTime,m_lastGeolocationReceivedTime)));
 	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
     x(5) = x(5) + xdot(5)*timeElapsed;
+	double heading = x(5); // - (m_startHeadingEkf-m_startHeading);
+	heading = (heading > PI)?(heading-2*PI):(heading);
+	heading = (heading < -PI)?(heading+2*PI):(heading);
+
+	/*heading = heading - (m_startHeadingEkf - m_startHeading);
+	heading = (heading > PI)?(heading-2*PI):(heading);
+	heading = (heading < -PI)?(heading+2*PI):(heading);*/
 	m_lastGeolocationReceivedTime = m_geolocationReceivedTime;
 	//Position
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_groundSpeedReceivedTime,m_lastGroundSpeedReceivedTime)));
 	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
 	double dx = xdot(0)*timeElapsed; 
-    x(0) = x(0) + dx*std::cos(x(5));
-    x(1) = x(1) + dx*std::sin(x(5));
+    x(0) = x(0) + dx*std::cos(heading);
+    x(1) = x(1) + dx*std::sin(heading);
 	m_lastGroundSpeedReceivedTime = m_groundSpeedReceivedTime;
     //Velocity    
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_accReceivedTime,m_lastAccReceivedTime)));
@@ -597,10 +609,13 @@ void Kalman::sendStates(uint32_t ukfStamp){
 	double heading = m_states(5); // - (m_startHeadingEkf-m_startHeading);
 	heading = (heading > PI)?(heading-2*PI):(heading);
 	heading = (heading < -PI)?(heading+2*PI):(heading);
+	//m_states(5) = heading;
 
-	heading = heading - (m_startHeadingEkf - m_startHeading);
+	/*heading = heading - (m_startHeadingEkf - m_startHeading);
 	heading = (heading > PI)?(heading-2*PI):(heading);
 	heading = (heading < -PI)?(heading+2*PI):(heading);
+    poseMessage.heading(static_cast<float>(heading));*/
+
     poseMessage.heading(static_cast<float>(heading));
     //std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
     cluon::data::TimeStamp sampleTime = m_geolocationReceivedTime;
@@ -885,6 +900,7 @@ void Kalman::filterInitialization(){
 					m_filterInitYaw.clear();
 				}else{
 					m_startHeading = calculateHeading(m_positionVec[maxIndex-i](0),m_positionVec[maxIndex-i](1),m_positionVec[maxIndex](0),m_positionVec[maxIndex](1));		
+					m_states(5) = m_startHeading;
 					m_filterInit = true;
 					std::cout << "UKF Filtering Initialized ..." <<  " Start Heading; " << m_startHeading << std::endl;
 					m_positionVec.clear();
