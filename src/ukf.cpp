@@ -164,11 +164,21 @@ void Kalman::nextHeading(cluon::data::Envelope data){
   auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
   double heading = static_cast<double>(odometry.heading());
   if(m_filterInit){
+	double headingDiff = m_lastHeadingMeasurement - heading;
+ 	m_lastHeadingMeasurement = heading;
+  	if(headingDiff>PI){
+	  //heading = heading + 2*PI;
+	  m_laps++;
+  	}
+  	else if(headingDiff < -PI){
+	  //heading = heading - 2*PI;
+	  m_laps--;
+  	}
   	heading = heading - (m_startHeadingEkf - m_startHeading);
-	heading = (heading > PI)?(heading-2*PI):(heading);
-	heading = (heading < -PI)?(heading+2*PI):(heading);
+	//heading = (heading > PI)?(heading-2*PI):(heading);
+	//heading = (heading < -PI)?(heading+2*PI):(heading);
   }
-  m_odometryData(2) = heading;
+  m_odometryData(2) = heading+m_laps*2*PI;
 
   if(!m_readyState){
 	  m_validHeadingMeasurements++;
@@ -525,9 +535,9 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_geolocationReceivedTime,m_lastGeolocationReceivedTime)));
 	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
     x(5) = x(5) + xdot(5)*timeElapsed;
-	double heading = x(5); // - (m_startHeadingEkf-m_startHeading);
-	heading = (heading > PI)?(heading-2*PI):(heading);
-	heading = (heading < -PI)?(heading+2*PI):(heading);
+	double heading = x(5) - (m_startHeadingEkf-m_startHeading);
+	//heading = (heading > PI)?(heading-2*PI):(heading);
+	//heading = (heading < -PI)?(heading+2*PI):(heading);
 
 	/*heading = heading - (m_startHeadingEkf - m_startHeading);
 	heading = (heading > PI)?(heading-2*PI):(heading);
@@ -607,8 +617,10 @@ void Kalman::sendStates(uint32_t ukfStamp){
     poseMessage.latitude(m_states(1)); //sendGPS[0]
 
 	double heading = m_states(5); // - (m_startHeadingEkf-m_startHeading);
-	heading = (heading > PI)?(heading-2*PI):(heading);
-	heading = (heading < -PI)?(heading+2*PI):(heading);
+	while(heading > PI || heading < -PI){
+		heading = (heading > PI)?(heading-2*PI):(heading);
+		heading = (heading < -PI)?(heading+2*PI):(heading);
+	}
 	//m_states(5) = heading;
 
 	/*heading = heading - (m_startHeadingEkf - m_startHeading);

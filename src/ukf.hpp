@@ -74,6 +74,8 @@ void filterInitialization();
   double m_yawRate = 0;
   double m_delta = 0;
   double m_groundSpeed = 0;
+  double m_lastHeadingMeasurement = 0;
+  int m_laps = 0;
   cluon::data::TimeStamp m_yawReceivedTime = {};
   cluon::data::TimeStamp m_lastYawReceivedTime = {};
   cluon::data::TimeStamp m_groundSpeedReceivedTime = {};
