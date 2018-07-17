@@ -769,7 +769,7 @@ void Kalman::checkVehicleState(){
     std::lock_guard<std::mutex> lockYaw(m_yawMutex);
 
   	if(!reset){
-  		if(m_velMeasurementCount > 25 && m_accMeasurementCount > 25 && m_yawMeasurementCount > 25){
+  		if(m_velMeasurementCount > 40 && m_accMeasurementCount > 40 && m_yawMeasurementCount > 40){
 
   			reset = true;
   		}	
