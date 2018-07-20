@@ -25,6 +25,7 @@
 Kalman::Kalman(std::map<std::string, std::string> commandlineArguments,cluon::OD4Session &a_od4) :
   od4(a_od4)
   , m_odometryData()
+  , m_odometrySlamData()
   , m_acceleration()
   , m_poseMutex()
   , m_yawMutex()
@@ -46,6 +47,7 @@ Kalman::Kalman(std::map<std::string, std::string> commandlineArguments,cluon::OD
   , m_wheelIdRight()
 {
   m_odometryData << 0,0,0;
+  m_odometrySlamData << 0,0,0;
   m_acceleration << 0,0,0;
   m_states = Eigen::MatrixXd::Zero(6,1);
   m_states << 0,0,0,0,0,0;
@@ -129,60 +131,80 @@ void Kalman::setUp(std::map<std::string, std::string> configuration)
 
 void Kalman::nextPose(cluon::data::Envelope data){
     //#########################Recieve Odometry##################################
-  
+	std::lock_guard<std::mutex> lockPose(m_poseMutex);
+	m_geolocationReceivedTime = data.sampleTimeStamp();
+	auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
+
+	double longitude = odometry.longitude();
+	double latitude = odometry.latitude();
+	
+	//toCartesian(const std::array<double, 2> &WGS84Reference, const std::array<double, 2> &WGS84Position)
+
+	std::array<double,2> WGS84ReadingTemp;
+
+	WGS84ReadingTemp[0] = latitude;
+	WGS84ReadingTemp[1] = longitude;
+
+	std::array<double,2> WGS84Reading = wgs84::toCartesian(m_gpsReference, WGS84ReadingTemp); 
+	if(!m_zeroVelState && !m_filterInit){
+		Eigen::Vector2d tempPos;
+		tempPos << WGS84Reading[0],WGS84Reading[1];
+		m_positionVec.push_back(tempPos);
+		//std::cout << tempPos(0) << " : " << tempPos(1) << " vec size:" << m_positionVec.size() << std::endl;
+	}
+	//opendlv::data::environment::WGS84Coordinate gpsCurrent = opendlv::data::environment::WGS84Coordinate(latitude, longitude);
+	//opendlv::data::environment::Point3 gpsTransform = m_gpsReference.transform(gpsCurrent);
+	//double heading = calculateHeading(WGS84Reading[0],WGS84Reading[1]);
+	m_odometryData(0) =  WGS84Reading[0];
+	m_odometryData(1) = WGS84Reading[1];	
+  		     
+}
+
+void Kalman::nextSlamPose(cluon::data::Envelope data){
   std::lock_guard<std::mutex> lockPose(m_poseMutex);
   m_geolocationReceivedTime = data.sampleTimeStamp();
   auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
 
   double longitude = odometry.longitude();
   double latitude = odometry.latitude();
- 
-  //toCartesian(const std::array<double, 2> &WGS84Reference, const std::array<double, 2> &WGS84Position)
+  float heading = odometry.heading();
+  heading = heading + static_cast<float>(m_laps*2*PI);
+  m_odometrySlamData(0) =  longitude;
+  m_odometrySlamData(1) = latitude;
+  m_odometrySlamData(2) = static_cast<double>(heading);
 
-  std::array<double,2> WGS84ReadingTemp;
+  m_recievedSlamPose = true;
+  m_motionSlamUpdate = true;
 
-  WGS84ReadingTemp[0] = latitude;
-  WGS84ReadingTemp[1] = longitude;
+  //UpdateHeadingBias
 
-  std::array<double,2> WGS84Reading = wgs84::toCartesian(m_gpsReference, WGS84ReadingTemp); 
-   if(!m_zeroVelState && !m_filterInit){
-  	Eigen::Vector2d tempPos;
-  	tempPos << WGS84Reading[0],WGS84Reading[1];
-  	m_positionVec.push_back(tempPos);
-	//std::cout << tempPos(0) << " : " << tempPos(1) << " vec size:" << m_positionVec.size() << std::endl;
-  }
-  //opendlv::data::environment::WGS84Coordinate gpsCurrent = opendlv::data::environment::WGS84Coordinate(latitude, longitude);
-  //opendlv::data::environment::Point3 gpsTransform = m_gpsReference.transform(gpsCurrent);
-  //double heading = calculateHeading(WGS84Reading[0],WGS84Reading[1]);
-  m_odometryData(0) =  WGS84Reading[0];
-  m_odometryData(1) = WGS84Reading[1];				     
 }
 void Kalman::nextHeading(cluon::data::Envelope data){
+	std::lock_guard<std::mutex> lockPose(m_poseMutex);
+	m_geolocationReceivedTime = data.sampleTimeStamp();
+	auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
+	double heading = static_cast<double>(odometry.heading());
+	if(m_filterInit){
+		double headingDiff = m_lastHeadingMeasurement - heading;
+		m_lastHeadingMeasurement = heading;
+		if(headingDiff>PI){
+		//heading = heading + 2*PI;
+		m_laps++;
+		}
+		else if(headingDiff < -PI){
+		//heading = heading - 2*PI;
+		m_laps--;
+		}
+		heading = heading - (m_startHeadingEkf - m_startHeading);
+		//heading = (heading > PI)?(heading-2*PI):(heading);
+		//heading = (heading < -PI)?(heading+2*PI):(heading);
+	}
+	m_odometryData(2) = heading+m_laps*2*PI;
 
-  std::lock_guard<std::mutex> lockPose(m_poseMutex);
-  m_geolocationReceivedTime = data.sampleTimeStamp();
-  auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
-  double heading = static_cast<double>(odometry.heading());
-  if(m_filterInit){
-	double headingDiff = m_lastHeadingMeasurement - heading;
- 	m_lastHeadingMeasurement = heading;
-  	if(headingDiff>PI){
-	  //heading = heading + 2*PI;
-	  m_laps++;
-  	}
-  	else if(headingDiff < -PI){
-	  //heading = heading - 2*PI;
-	  m_laps--;
-  	}
-  	heading = heading - (m_startHeadingEkf - m_startHeading);
-	//heading = (heading > PI)?(heading-2*PI):(heading);
-	//heading = (heading < -PI)?(heading+2*PI):(heading);
-  }
-  m_odometryData(2) = heading+m_laps*2*PI;
-
-  if(!m_readyState){
-	  m_validHeadingMeasurements++;
-  } 
+	if(!m_readyState){
+		m_validHeadingMeasurements++;
+	} 
+  
 }
 void Kalman::nextGroundSpeed(cluon::data::Envelope data){
 
@@ -429,6 +451,20 @@ void Kalman::UKFUpdate()
 	Eigen::MatrixXd Pxy = Eigen::MatrixXd::Zero(6,7);
 	//Innovation covariance
 
+
+	if(m_motionSlamUpdate){
+
+		if(m_recievedSlamPose){
+			m_R(0,0) = 0.01;
+			m_R(1,1) = 0.01;
+			m_R(6,6) = 0.01;
+		}else{
+			m_R(0,0) = m_rX;
+			m_R(1,1) = m_rY;
+			m_R(6,6) = m_rHeading;
+
+		}
+	}
 	Eigen::MatrixXd S = m_R;
 	for(int i = 0; i < 2*n+1; i++){
 
@@ -449,22 +485,37 @@ void Kalman::UKFUpdate()
 	//std::cout << "measurements" << y.transpose() << std::endl;
 	
 	//std::cout << "head b u: " << m_odometryData(2) << std::endl;
-  		if(m_zeroVelState){
-  			y << m_odometryData(0), 
-		 		 m_odometryData(1),
-		 		 0.0,
-		 		 0.0,
-		 		 0.0,
-		 		 0.0,
-		 		 m_odometryData(2);
-  		}else{
-			y << m_odometryData(0), 
-		 		 m_odometryData(1),
-		 		 m_groundSpeed,
-		 		 m_acceleration(0),
-		 		 0,
-		 		 m_yawRate,
-		 		 m_odometryData(2) + m_yawRate*0.7;
+		if(!m_recievedSlamPose){
+			if(m_zeroVelState){
+				y << m_odometryData(0), 
+					m_odometryData(1),
+					0.0,
+					0.0,
+					0.0,
+					0.0,
+					m_odometryData(2);
+			}else{
+				y << m_odometryData(0), 
+					m_odometryData(1),
+					m_groundSpeed,
+					m_acceleration(0),
+					0,
+					m_yawRate,
+					m_odometryData(2) + m_yawRate*0.7;
+
+					std::cout << "Update with Ellipse ... " << std::endl;
+			}	
+		}else{
+
+			y << m_odometrySlamData(0), 
+					m_odometrySlamData(1),
+					m_groundSpeed,
+					m_acceleration(0),
+					0,
+					m_yawRate,
+					m_odometrySlamData(2);
+			m_recievedSlamPose = false;
+			std::cout << "Correting filter with SLAM pose ..." << std::endl;
 		}	
 	}
 
@@ -605,7 +656,7 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
 
 void Kalman::sendStates(uint32_t ukfStamp){
 
-	std::cout << m_states.transpose() << std::endl;
+	//std::cout << m_states.transpose() << std::endl;
 	//Pose
 	opendlv::logic::sensation::Geolocation poseMessage;
   	std::lock_guard<std::mutex> lockSend(m_poseMutex); 
@@ -818,20 +869,20 @@ void Kalman::checkVehicleState(){
 
 		
 	}else{
-
-		m_velMeasurementCount = 0;
-		m_currentVelMean = 0;
-		m_accMeasurementCount = 0;
-		m_currentAccMean = 0;
-		m_yawMeasurementCount= 0;
-		m_currentYawMean = 0;
-	  	m_R << m_rX,0,0,0,0,0,0,
-	  	   	 0,m_rY,0,0,0,0,0,
-	  		 0,0,m_rVelX,0,0,0,0,
-	  		 0,0,0,m_rAccX,0,0,0,
-	  		 0,0,0,0,m_rAccY,0,0,
-	  		 0,0,0,0,0,m_rYaw,0,
-	  		 0,0,0,0,0,0,m_rHeading;
+			m_velMeasurementCount = 0;
+			m_currentVelMean = 0;
+			m_accMeasurementCount = 0;
+			m_currentAccMean = 0;
+			m_yawMeasurementCount= 0;
+			m_currentYawMean = 0;
+			m_R << m_rX,0,0,0,0,0,0,
+				0,m_rY,0,0,0,0,0,
+				0,0,m_rVelX,0,0,0,0,
+				0,0,0,m_rAccX,0,0,0,
+				0,0,0,0,m_rAccY,0,0,
+				0,0,0,0,0,m_rYaw,0,
+				0,0,0,0,0,0,m_rHeading;
+			   
 	}
 	//Check last 1 seconds of acceleration measurements so there is a small or negative acceleration
 

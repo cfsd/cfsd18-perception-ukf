@@ -40,6 +40,7 @@ public:
   ~Kalman();
 
 void nextPose(cluon::data::Envelope data);
+void nextSlamPose(cluon::data::Envelope data);
 void nextHeading(cluon::data::Envelope data);
 void nextGroundSpeed(cluon::data::Envelope data);
 void nextYawRate(cluon::data::Envelope data);
@@ -70,6 +71,8 @@ void filterInitialization();
 
   cluon::OD4Session &od4;
   Eigen::Vector3d m_odometryData;
+
+  Eigen::Vector3d m_odometrySlamData;
   Eigen::Vector3d m_acceleration;
   double m_yawRate = 0;
   double m_delta = 0;
@@ -106,6 +109,7 @@ void filterInitialization();
   int m_validRackMeasurements = 0;
   double m_startHeading = 0;
   double m_startHeadingEkf = 0;
+  double m_headingBiasFromSlam = 0;
   int m_headingEkfInitCounter = 0;
   //Ready Variables
   bool m_readyStateMachine = true; //Start false
@@ -135,6 +139,8 @@ void filterInitialization();
   double const m_alphaConst = 20000;
   bool m_ekfStartHeadingInitiated = false;
   bool m_ekfStartHeadingCloser = false;
+  bool m_recievedSlamPose = false;
+  bool m_motionSlamUpdate = false;
   
 
   double m_rX = 0;

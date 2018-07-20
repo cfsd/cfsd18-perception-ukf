@@ -56,16 +56,21 @@ int32_t main(int32_t argc, char **argv) {
     uint32_t wheelIdLeft = static_cast<uint32_t>(std::stoi(commandlineArguments["wheelEncoderIdLeft"]));
     uint32_t wheelIdRight = static_cast<uint32_t>(std::stoi(commandlineArguments["wheelEncoderIdRight"]));
 
-    auto poseEnvelope{[&ukf = kalman,senderStamp = estimationStampRaw, senderEkf = estimationStamp](cluon::data::Envelope &&envelope)
+    uint32_t slamStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["slamId"]));
+
+    auto poseEnvelope{[&ukf = kalman,senderStamp = estimationStampRaw, senderEkf = estimationStamp, senderSlam = slamStamp](cluon::data::Envelope &&envelope)
       {
         
         if(envelope.senderStamp() == senderStamp){
           ukf.nextPose(envelope);
         }else if(envelope.senderStamp() == senderEkf){
           ukf.nextHeading(envelope);
+        }else if(envelope.senderStamp() == senderSlam){
+          ukf.nextSlamPose(envelope);
         }
       } 
     };
+
     auto yawRateEnvelope{[&ukf = kalman, senderStamp = estimationStamp](cluon::data::Envelope &&envelope)
       {
         if(envelope.senderStamp() == senderStamp){
