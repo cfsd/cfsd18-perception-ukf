@@ -455,9 +455,9 @@ void Kalman::UKFUpdate()
 	if(m_motionSlamUpdate){
 
 		if(m_recievedSlamPose){
-			m_R(0,0) = 0.01;
-			m_R(1,1) = 0.01;
-			m_R(6,6) = 0.01;
+			m_R(0,0) = 0.5;
+			m_R(1,1) = 0.5;
+			m_R(6,6) = 0.5;
 		}else{
 			m_R(0,0) = m_rX;
 			m_R(1,1) = m_rY;
@@ -501,7 +501,7 @@ void Kalman::UKFUpdate()
 					m_acceleration(0),
 					0,
 					m_yawRate,
-					m_odometryData(2) + m_yawRate*0.7;
+					m_odometryData(2) + m_yawRate*0.5;
 
 					std::cout << "Update with Ellipse ... " << std::endl;
 			}	
@@ -513,7 +513,7 @@ void Kalman::UKFUpdate()
 					m_acceleration(0),
 					0,
 					m_yawRate,
-					m_odometrySlamData(2);
+					m_odometryData(2) + m_yawRate*0.5;
 			m_recievedSlamPose = false;
 			std::cout << "Correting filter with SLAM pose ..." << std::endl;
 		}	
@@ -567,8 +567,8 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 	}
 	
 	//std::cout << "from vehicle model: " << alphaF << " | " << alphaR << " | " << ce << std::endl;
-	double Fyf = m_alphaConst*alphaF; //magicFormula(alphaF,Fzf,m_vehicleModelParameters(5));
-	double Fyr =  m_alphaConst*alphaR;//magicFormula(alphaR,Fzr,m_vehicleModelParameters(5));
+	double Fyf = -m_alphaConst*alphaF; //magicFormula(alphaF,Fzf,m_vehicleModelParameters(5));
+	double Fyr =  -m_alphaConst*alphaR;//magicFormula(alphaR,Fzr,m_vehicleModelParameters(5));
 
 
 	xdot << x(2),
@@ -577,16 +577,22 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 			0,
 			(m_vehicleModelParameters(4)*Fyf*std::cos(m_delta)-m_vehicleModelParameters(5)*Fyr)/m_vehicleModelParameters(1),
 			x(4);
-
+	std::cout << "xdot: " << xdot.transpose() << std::endl;
 	//Update xdot with timedifference
 	double timeElapsed;
 	//cluon::data::TimeStamp currentTime = cluon::time::now();
 	//double tm = 0.05;
     //Heading
+    timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_yawReceivedTime,m_lastYawReceivedTime)));
+	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
+    x(4) = x(4) + xdot(4)*0.05;
+	m_lastYawReceivedTime = m_yawReceivedTime;
+
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_geolocationReceivedTime,m_lastGeolocationReceivedTime)));
 	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
-    x(5) = x(5) + xdot(5)*timeElapsed;
-	double heading = x(5) - (m_startHeadingEkf-m_startHeading);
+    x(5) = x(5) + x(4)*0.05;
+	double heading = x(5);// - (m_startHeadingEkf-m_startHeading);
+	
 	//heading = (heading > PI)?(heading-2*PI):(heading);
 	//heading = (heading < -PI)?(heading+2*PI):(heading);
 
@@ -597,23 +603,20 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 	//Position
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_groundSpeedReceivedTime,m_lastGroundSpeedReceivedTime)));
 	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
-	double dx = xdot(0)*timeElapsed; 
+	double dx = xdot(0)*0.05; 
     x(0) = x(0) + dx*std::cos(heading);
     x(1) = x(1) + dx*std::sin(heading);
 	m_lastGroundSpeedReceivedTime = m_groundSpeedReceivedTime;
     //Velocity    
     timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_accReceivedTime,m_lastAccReceivedTime)));
 	timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
-    x(2) = x(2) + xdot(2)*timeElapsed;
+    x(2) = x(2) + xdot(2)*0.05;
     x(3) = 0;
 	m_lastAccReceivedTime = m_accReceivedTime;
     //Yaw   
-    //timeElapsed = fabs(static_cast<double>(cluon::time::deltaInMicroseconds(m_yawReceivedTime,m_lastYawReceivedTime)));
-	//timeElapsed = (timeElapsed/100000 > 0.3)?(0.3):(timeElapsed/1000000);
-    x(4) = x(4) + xdot(4)*1;
-	m_lastYawReceivedTime = m_yawReceivedTime;
 	//std::cout << "TM: " << timeElapsed << std::endl;
 
+	std::cout << "x: " << x.transpose() << std::endl;
 	return x;
 }
 
@@ -640,7 +643,7 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
     	alphaR = (std::fabs(alphaR) > 0.02)?(0.02):(alphaR);
 	}
 	//std::cout << "from measurement model: " << alphaF << " | " << alphaR <<" | " << ce << std::endl;
-	double Fyf = m_alphaConst*alphaF; //magicFormula(alphaF,Fzf,m_vehicleModelParameters(5));
+	double Fyf = -m_alphaConst*alphaF; //magicFormula(alphaF,Fzf,m_vehicleModelParameters(5));
 	//double Fyr =  m_alphaConst*alphaR;//magicFormula(alphaR,Fzr,m_vehicleModelParameters(5));
 	
 	hx << x(0),
@@ -656,7 +659,7 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
 
 void Kalman::sendStates(uint32_t ukfStamp){
 
-	//std::cout << m_states.transpose() << std::endl;
+	std::cout << m_states.transpose() << std::endl;
 	//Pose
 	opendlv::logic::sensation::Geolocation poseMessage;
   	std::lock_guard<std::mutex> lockSend(m_poseMutex); 
