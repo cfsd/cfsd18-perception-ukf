@@ -577,7 +577,7 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 			0,
 			(m_vehicleModelParameters(4)*Fyf*std::cos(m_delta)-m_vehicleModelParameters(5)*Fyr)/m_vehicleModelParameters(1),
 			x(4);
-	std::cout << "xdot: " << xdot.transpose() << std::endl;
+	//std::cout << "xdot: " << xdot.transpose() << std::endl;
 	//Update xdot with timedifference
 	double timeElapsed;
 	//cluon::data::TimeStamp currentTime = cluon::time::now();
@@ -616,7 +616,7 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
     //Yaw   
 	//std::cout << "TM: " << timeElapsed << std::endl;
 
-	std::cout << "x: " << x.transpose() << std::endl;
+	//std::cout << "x: " << x.transpose() << std::endl;
 	return x;
 }
 
@@ -659,7 +659,7 @@ Eigen::MatrixXd Kalman::measurementModel(Eigen::MatrixXd x)
 
 void Kalman::sendStates(uint32_t ukfStamp){
 
-	std::cout << m_states.transpose() << std::endl;
+	//std::cout << m_states.transpose() << std::endl;
 	//Pose
 	opendlv::logic::sensation::Geolocation poseMessage;
   	std::lock_guard<std::mutex> lockSend(m_poseMutex); 
