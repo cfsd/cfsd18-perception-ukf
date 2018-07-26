@@ -155,8 +155,8 @@ void Kalman::nextPose(cluon::data::Envelope data){
 	//opendlv::data::environment::WGS84Coordinate gpsCurrent = opendlv::data::environment::WGS84Coordinate(latitude, longitude);
 	//opendlv::data::environment::Point3 gpsTransform = m_gpsReference.transform(gpsCurrent);
 	//double heading = calculateHeading(WGS84Reading[0],WGS84Reading[1]);
-	m_odometryData(0) =  WGS84Reading[0];
-	m_odometryData(1) = WGS84Reading[1];	
+	m_odometryData(0) =  WGS84Reading[0] + m_slamXOffset;
+	m_odometryData(1) = WGS84Reading[1] + m_slamYOffset;	
   		     
 }
 
@@ -167,11 +167,14 @@ void Kalman::nextSlamPose(cluon::data::Envelope data){
 
   double longitude = odometry.longitude();
   double latitude = odometry.latitude();
-  float heading = odometry.heading();
-  heading = heading + static_cast<float>(m_laps*2*PI);
+  double heading = static_cast<double>(odometry.heading());
+  while(fabs(heading-m_odometryData(2))>PI){
+	heading = (heading-m_odometryData(2) > PI)?(heading-2*PI):(heading);
+	heading = (heading-m_odometryData(2) < -PI)?(heading+2*PI):(heading); 
+  }
   m_odometrySlamData(0) =  longitude;
   m_odometrySlamData(1) = latitude;
-  m_odometrySlamData(2) = static_cast<double>(heading);
+  m_odometrySlamData(2) = heading;
 
   m_recievedSlamPose = true;
   m_motionSlamUpdate = true;
@@ -199,7 +202,7 @@ void Kalman::nextHeading(cluon::data::Envelope data){
 		//heading = (heading > PI)?(heading-2*PI):(heading);
 		//heading = (heading < -PI)?(heading+2*PI):(heading);
 	}
-	m_odometryData(2) = heading+m_laps*2*PI;
+	m_odometryData(2) = heading+m_laps*2*PI+m_slamHeadingOffset;
 
 	if(!m_readyState){
 		m_validHeadingMeasurements++;
@@ -455,9 +458,9 @@ void Kalman::UKFUpdate()
 	if(m_motionSlamUpdate){
 
 		if(m_recievedSlamPose){
-			m_R(0,0) = 0.5;
-			m_R(1,1) = 0.5;
-			m_R(6,6) = 0.5;
+			m_R(0,0) = 0.1;
+			m_R(1,1) = 0.1;
+			m_R(6,6) = 0.1;
 		}else{
 			m_R(0,0) = m_rX;
 			m_R(1,1) = m_rY;
@@ -513,7 +516,7 @@ void Kalman::UKFUpdate()
 					m_acceleration(0),
 					0,
 					m_yawRate,
-					m_odometryData(2) + m_yawRate*0.5;
+					m_odometrySlamData(2);
 			m_recievedSlamPose = false;
 			std::cout << "Correting filter with SLAM pose ..." << std::endl;
 		}	
@@ -577,7 +580,6 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
 			0,
 			(m_vehicleModelParameters(4)*Fyf*std::cos(m_delta)-m_vehicleModelParameters(5)*Fyr)/m_vehicleModelParameters(1),
 			x(4);
-	std::cout << "xdot: " << xdot.transpose() << std::endl;
 	//Update xdot with timedifference
 	double timeElapsed;
 	//cluon::data::TimeStamp currentTime = cluon::time::now();
@@ -616,7 +618,6 @@ Eigen::MatrixXd Kalman::vehicleModel(Eigen::MatrixXd x)
     //Yaw   
 	//std::cout << "TM: " << timeElapsed << std::endl;
 
-	std::cout << "x: " << x.transpose() << std::endl;
 	return x;
 }
 
@@ -741,7 +742,7 @@ void Kalman::initializeModule(){
 
 		//Check pose
 
-      	if( std::fabs(m_odometryData(0) - lastOdoX) > 0.001 && std::fabs(m_odometryData(1) - lastOdoY) > 0.001){
+      	if(std::fabs(m_odometryData(0) - lastOdoX) > 0.001 && std::fabs(m_odometryData(1) - lastOdoY) > 0.001){
         	if(m_odometryData(0) < 1000 && m_odometryData(1) < 1000){
           		lastOdoX = m_odometryData(0);
           		lastOdoY = m_odometryData(1);

@@ -141,7 +141,9 @@ void filterInitialization();
   bool m_ekfStartHeadingCloser = false;
   bool m_recievedSlamPose = false;
   bool m_motionSlamUpdate = false;
-  
+  double m_slamHeadingOffset = 0;
+  double m_slamXOffset = 0;
+  double m_slamYOffset = 0;
 
   double m_rX = 0;
   double m_rY = 0;
