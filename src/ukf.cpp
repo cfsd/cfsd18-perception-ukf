@@ -130,33 +130,34 @@ void Kalman::setUp(std::map<std::string, std::string> configuration)
 }
 
 void Kalman::nextPose(cluon::data::Envelope data){
-    //#########################Recieve Odometry##################################
-	std::lock_guard<std::mutex> lockPose(m_poseMutex);
-	m_geolocationReceivedTime = data.sampleTimeStamp();
-	auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
+		//#########################Recieve Odometry##################################
+		
+		std::lock_guard<std::mutex> lockPose(m_poseMutex);
+		m_geolocationReceivedTime = data.sampleTimeStamp();
+		auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
 
-	double longitude = odometry.longitude();
-	double latitude = odometry.latitude();
-	
-	//toCartesian(const std::array<double, 2> &WGS84Reference, const std::array<double, 2> &WGS84Position)
+		double longitude = odometry.longitude();
+		double latitude = odometry.latitude();
+		
+		//toCartesian(const std::array<double, 2> &WGS84Reference, const std::array<double, 2> &WGS84Position)
 
-	std::array<double,2> WGS84ReadingTemp;
+		std::array<double,2> WGS84ReadingTemp;
 
-	WGS84ReadingTemp[0] = latitude;
-	WGS84ReadingTemp[1] = longitude;
+		WGS84ReadingTemp[0] = latitude;
+		WGS84ReadingTemp[1] = longitude;
 
-	std::array<double,2> WGS84Reading = wgs84::toCartesian(m_gpsReference, WGS84ReadingTemp); 
-	if(!m_zeroVelState && !m_filterInit){
-		Eigen::Vector2d tempPos;
-		tempPos << WGS84Reading[0],WGS84Reading[1];
-		m_positionVec.push_back(tempPos);
-		//std::cout << tempPos(0) << " : " << tempPos(1) << " vec size:" << m_positionVec.size() << std::endl;
-	}
-	//opendlv::data::environment::WGS84Coordinate gpsCurrent = opendlv::data::environment::WGS84Coordinate(latitude, longitude);
-	//opendlv::data::environment::Point3 gpsTransform = m_gpsReference.transform(gpsCurrent);
-	//double heading = calculateHeading(WGS84Reading[0],WGS84Reading[1]);
-	m_odometryData(0) =  WGS84Reading[0] + m_slamXOffset;
-	m_odometryData(1) = WGS84Reading[1] + m_slamYOffset;	
+		std::array<double,2> WGS84Reading = wgs84::toCartesian(m_gpsReference, WGS84ReadingTemp); 
+		if(!m_zeroVelState && !m_filterInit){
+			Eigen::Vector2d tempPos;
+			tempPos << WGS84Reading[0],WGS84Reading[1];
+			m_positionVec.push_back(tempPos);
+			//std::cout << tempPos(0) << " : " << tempPos(1) << " vec size:" << m_positionVec.size() << std::endl;
+		}
+		//opendlv::data::environment::WGS84Coordinate gpsCurrent = opendlv::data::environment::WGS84Coordinate(latitude, longitude);
+		//opendlv::data::environment::Point3 gpsTransform = m_gpsReference.transform(gpsCurrent);
+		//double heading = calculateHeading(WGS84Reading[0],WGS84Reading[1]);
+		m_odometryData(0) =  WGS84Reading[0] + m_slamXOffset;
+		m_odometryData(1) = WGS84Reading[1] + m_slamYOffset;	
   		     
 }
 
@@ -182,31 +183,58 @@ void Kalman::nextSlamPose(cluon::data::Envelope data){
   //UpdateHeadingBias
 
 }
-void Kalman::nextHeading(cluon::data::Envelope data){
-	std::lock_guard<std::mutex> lockPose(m_poseMutex);
-	m_geolocationReceivedTime = data.sampleTimeStamp();
-	auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
-	double heading = static_cast<double>(odometry.heading());
-	if(m_filterInit){
-		double headingDiff = m_lastHeadingMeasurement - heading;
-		m_lastHeadingMeasurement = heading;
-		if(headingDiff>PI){
-		//heading = heading + 2*PI;
-		m_laps++;
-		}
-		else if(headingDiff < -PI){
-		//heading = heading - 2*PI;
-		m_laps--;
-		}
-		heading = heading - (m_startHeadingEkf - m_startHeading);
-		//heading = (heading > PI)?(heading-2*PI):(heading);
-		//heading = (heading < -PI)?(heading+2*PI):(heading);
-	}
-	m_odometryData(2) = heading+m_laps*2*PI+m_slamHeadingOffset;
+void Kalman::nextEllipsePose(cluon::data::Envelope data){
 
-	if(!m_readyState){
-		m_validHeadingMeasurements++;
-	} 
+	if(m_filterInit){
+		std::lock_guard<std::mutex> lockPose(m_poseMutex);
+		m_geolocationReceivedTime = data.sampleTimeStamp();
+		auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
+		double heading = static_cast<double>(odometry.heading());
+
+		heading = heading-PI;
+		heading = (heading > PI)?(heading-2*PI):(heading);
+		heading = (heading < -PI)?(heading+2*PI):(heading);
+		std::cout << "Last ElHeado: " << std::fabs(heading - m_lastEllipseHeading) << std::endl;
+		if(std::fabs(heading - m_lastEllipseHeading) > 0.261799){ //15 Degrees
+			std::cout << heading << " | " << m_lastSentHeading << std::endl;
+			if(std::fabs(m_lastSentHeading - heading) < 0.261799 ){
+				std::cout << "Ellipse Data Initialized ..." << std::endl;
+				m_ellipseState = true;
+				m_startHeadingEkf = PI;
+				m_startHeading = 0;
+				m_R(6,6) = 0.01;
+			}	
+		}
+		m_lastEllipseHeading = heading;
+	}	
+}
+void Kalman::nextHeading(cluon::data::Envelope data){
+	
+		std::lock_guard<std::mutex> lockPose(m_poseMutex);
+		m_geolocationReceivedTime = data.sampleTimeStamp();
+		auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
+		double heading = static_cast<double>(odometry.heading());
+		if(m_filterInit){
+			double headingDiff = m_lastHeadingMeasurement - heading;
+			m_lastHeadingMeasurement = heading;
+			if(headingDiff>PI){
+			//heading = heading + 2*PI;
+			m_laps++;
+			}
+			else if(headingDiff < -PI){
+			//heading = heading - 2*PI;
+			m_laps--;
+			}
+			heading = heading - (m_startHeadingEkf - m_startHeading);
+			//heading = (heading > PI)?(heading-2*PI):(heading);
+			//heading = (heading < -PI)?(heading+2*PI):(heading);
+		}
+		m_odometryData(2) = heading+m_laps*2*PI+m_slamHeadingOffset;
+
+		if(!m_readyState){
+			m_validHeadingMeasurements++;
+		} 
+		
   
 }
 void Kalman::nextGroundSpeed(cluon::data::Envelope data){
@@ -506,7 +534,7 @@ void Kalman::UKFUpdate()
 					m_yawRate,
 					m_odometryData(2) + m_yawRate*0.5;
 
-					std::cout << "Update with Ellipse ... " << std::endl;
+					//std::cout << "Update with Ellipse ... " << std::endl;
 			}	
 		}else{
 
@@ -676,6 +704,7 @@ void Kalman::sendStates(uint32_t ukfStamp){
 		heading = (heading > PI)?(heading-2*PI):(heading);
 		heading = (heading < -PI)?(heading+2*PI):(heading);
 	}
+	m_lastSentHeading = heading;
 	//m_states(5) = heading;
 
 	/*heading = heading - (m_startHeadingEkf - m_startHeading);
@@ -946,6 +975,7 @@ void Kalman::filterInitialization(){
 	}
 	if(!m_ekfStartHeadingCloser && m_ekfStartHeadingInitiated){
 		m_startHeadingEkf = m_startHeadingEkf/m_headingEkfInitCounter;
+		m_lastEllipseHeading = m_startHeadingEkf;
 		std::cout << "Start heading EKF: " << m_startHeadingEkf << std::endl;
 		m_ekfStartHeadingCloser = true;
 	}
@@ -968,6 +998,7 @@ void Kalman::filterInitialization(){
 				}else{
 					m_startHeading = calculateHeading(m_positionVec[maxIndex-i](0),m_positionVec[maxIndex-i](1),m_positionVec[maxIndex](0),m_positionVec[maxIndex](1));		
 					m_states(5) = m_startHeading;
+					m_lastSentHeading = m_startHeading;
 					m_filterInit = true;
 					std::cout << "UKF Filtering Initialized ..." <<  " Start Heading; " << m_startHeading << std::endl;
 					m_positionVec.clear();
@@ -980,7 +1011,10 @@ void Kalman::filterInitialization(){
 	}
 	
 }
+bool Kalman::getEllipseState(){
 
+	return m_ellipseState;
+}
 void Kalman::tearDown()
 {
 }

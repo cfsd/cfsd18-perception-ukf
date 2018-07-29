@@ -43,28 +43,31 @@ int32_t main(int32_t argc, char **argv) {
     cluon::data::Envelope data;
     //std::shared_ptr<Slam> slammer = std::shared_ptr<Slam>(new Slam(10));
     cluon::OD4Session od4{static_cast<uint16_t>(std::stoi(commandlineArguments["cid"]))};
-
     cluon::OD4Session od4Dan{static_cast<uint16_t>(std::stoi(commandlineArguments["cidDan"]))};
+
     Kalman kalman(commandlineArguments,od4);
+
     uint32_t estimationStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["estimationId"]));
-
     uint32_t estimationStampRaw = static_cast<uint32_t>(std::stoi(commandlineArguments["estimationIdRaw"]));
-
     uint32_t ukfStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["id"])); 
     uint32_t stateMachineStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["stateMachineId"]));
     uint32_t rackStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["rackId"]));
     uint32_t wheelIdLeft = static_cast<uint32_t>(std::stoi(commandlineArguments["wheelEncoderIdLeft"]));
     uint32_t wheelIdRight = static_cast<uint32_t>(std::stoi(commandlineArguments["wheelEncoderIdRight"]));
-
     uint32_t slamStamp = static_cast<uint32_t>(std::stoi(commandlineArguments["slamId"]));
 
     auto poseEnvelope{[&ukf = kalman,senderStamp = estimationStampRaw, senderEkf = estimationStamp, senderSlam = slamStamp](cluon::data::Envelope &&envelope)
       {
         
-        if(envelope.senderStamp() == senderStamp){
+        if(envelope.senderStamp() == senderStamp) {
           ukf.nextPose(envelope);
         }else if(envelope.senderStamp() == senderEkf){
-          ukf.nextHeading(envelope);
+          
+            ukf.nextHeading(envelope);
+          if(!ukf.getEllipseState()){  
+            ukf.nextEllipsePose(envelope);
+          }
+            
         }else if(envelope.senderStamp() == senderSlam){
           ukf.nextSlamPose(envelope);
         }

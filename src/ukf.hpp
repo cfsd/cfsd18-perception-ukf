@@ -41,6 +41,7 @@ public:
 
 void nextPose(cluon::data::Envelope data);
 void nextSlamPose(cluon::data::Envelope data);
+void nextEllipsePose(cluon::data::Envelope data);
 void nextHeading(cluon::data::Envelope data);
 void nextGroundSpeed(cluon::data::Envelope data);
 void nextYawRate(cluon::data::Envelope data);
@@ -56,6 +57,7 @@ void UKFUpdate();
 void checkVehicleState();
 bool getFilterInitState();
 void filterInitialization();
+bool getEllipseState();
 
  private:
   void setUp(std::map<std::string, std::string> commandlineArguments);
@@ -78,6 +80,8 @@ void filterInitialization();
   double m_delta = 0;
   double m_groundSpeed = 0;
   double m_lastHeadingMeasurement = 0;
+  double m_lastEllipseHeading = 0;
+  double m_lastSentHeading = 0;
   int m_laps = 0;
   cluon::data::TimeStamp m_yawReceivedTime = {};
   cluon::data::TimeStamp m_lastYawReceivedTime = {};
@@ -116,6 +120,7 @@ void filterInitialization();
   bool m_readyState = false; //Start false
   bool m_filterInit = false; //Start false
   bool m_zeroVelState = true;
+  bool m_ellipseState = false;
 
   int m_validGroundSpeedMeasurements = 0;
   int m_validWheelLeftMeasurements = 0;
