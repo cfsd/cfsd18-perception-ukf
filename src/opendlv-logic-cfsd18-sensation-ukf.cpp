@@ -145,7 +145,7 @@ int32_t main(int32_t argc, char **argv) {
             kalman.sendStates(ukfStamp);
           }else{
             kalman.filterInitialization();
-          }
+            kalman.sendStates(ukfStamp);          }
         }
       }else{
         kalman.initializeModule();

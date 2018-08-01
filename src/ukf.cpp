@@ -121,6 +121,8 @@ void Kalman::setUp(std::map<std::string, std::string> configuration)
 
 	m_vehicleModelParameters << vM,vIz,vG,vL,vLf,vLr,vMu;
 
+	m_headingInitDistance = std::stod(configuration["headingInitDistance"]);
+
 
 	std::cout << "vmp: " << m_vehicleModelParameters.transpose() << std::endl;
 
@@ -690,33 +692,35 @@ void Kalman::sendStates(uint32_t ukfStamp){
 
 	//std::cout << m_states.transpose() << std::endl;
 	//Pose
-	opendlv::logic::sensation::Geolocation poseMessage;
-  	std::lock_guard<std::mutex> lockSend(m_poseMutex); 
-  	/*std::array<double,2> cartesianPos;
-  	cartesianPos[0] = m_states(0);
-  	cartesianPos[1] = m_states(1);
-  	std::array<double,2> sendGPS = wgs84::fromCartesian(m_gpsReference, cartesianPos);*/
-  	poseMessage.longitude(m_states(0)); //sendGPS[1]
-    poseMessage.latitude(m_states(1)); //sendGPS[0]
+	cluon::data::TimeStamp sampleTime;
+	if(m_filterInit){
+		opendlv::logic::sensation::Geolocation poseMessage;
+		std::lock_guard<std::mutex> lockSend(m_poseMutex); 
+		/*std::array<double,2> cartesianPos;
+		cartesianPos[0] = m_states(0);
+		cartesianPos[1] = m_states(1);
+		std::array<double,2> sendGPS = wgs84::fromCartesian(m_gpsReference, cartesianPos);*/
+		poseMessage.longitude(m_states(0)); //sendGPS[1]
+		poseMessage.latitude(m_states(1)); //sendGPS[0]
 
-	double heading = m_states(5); // - (m_startHeadingEkf-m_startHeading);
-	while(heading > PI || heading < -PI){
+		double heading = m_states(5); // - (m_startHeadingEkf-m_startHeading);
+		while(heading > PI || heading < -PI){
+			heading = (heading > PI)?(heading-2*PI):(heading);
+			heading = (heading < -PI)?(heading+2*PI):(heading);
+		}
+		m_lastSentHeading = heading;
+		//m_states(5) = heading;
+
+		/*heading = heading - (m_startHeadingEkf - m_startHeading);
 		heading = (heading > PI)?(heading-2*PI):(heading);
 		heading = (heading < -PI)?(heading+2*PI):(heading);
+		poseMessage.heading(static_cast<float>(heading));*/
+
+		poseMessage.heading(static_cast<float>(heading));
+		//std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
+	    sampleTime = m_geolocationReceivedTime;
+		od4.send(poseMessage, sampleTime ,ukfStamp);
 	}
-	m_lastSentHeading = heading;
-	//m_states(5) = heading;
-
-	/*heading = heading - (m_startHeadingEkf - m_startHeading);
-	heading = (heading > PI)?(heading-2*PI):(heading);
-	heading = (heading < -PI)?(heading+2*PI):(heading);
-    poseMessage.heading(static_cast<float>(heading));*/
-
-    poseMessage.heading(static_cast<float>(heading));
-    //std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
-    cluon::data::TimeStamp sampleTime = m_geolocationReceivedTime;
-    od4.send(poseMessage, sampleTime ,ukfStamp);
-
     //groundspeed
     opendlv::proxy::GroundSpeedReading gsMessage;
 	std::lock_guard<std::mutex> lockGroundSpeed(m_groundSpeedMutex);
@@ -986,7 +990,7 @@ void Kalman::filterInitialization(){
 		for(uint32_t i = 0; i < maxIndex; i++){
 			distance += std::sqrt( (m_positionVec[maxIndex-i-1](0)-m_positionVec[maxIndex-i](0))*(m_positionVec[maxIndex-i-1](0)-m_positionVec[maxIndex-i](0)) + (m_positionVec[maxIndex-i-1](1) - m_positionVec[maxIndex-i](1)) * ( m_positionVec[maxIndex-i-1](1)-m_positionVec[maxIndex-i](1)) );
 
-			if(distance > 1){
+			if(distance > m_headingInitDistance){
 				double yawMean = 0;
 				for(uint32_t j = 0; j < m_filterInitYaw.size(); j++){
 				

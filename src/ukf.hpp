@@ -112,6 +112,7 @@ bool getEllipseState();
   double m_maxSpeed = 0;
   int m_validRackMeasurements = 0;
   double m_startHeading = 0;
+  double m_headingInitDistance = 0;
   double m_startHeadingEkf = 0;
   double m_headingBiasFromSlam = 0;
   int m_headingEkfInitCounter = 0;
