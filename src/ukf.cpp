@@ -216,6 +216,15 @@ void Kalman::nextHeading(cluon::data::Envelope data){
 		m_geolocationReceivedTime = data.sampleTimeStamp();
 		auto odometry = cluon::extractMessage<opendlv::logic::sensation::Geolocation>(std::move(data));
 		double heading = static_cast<double>(odometry.heading());
+	
+		/* -------------------------THIS IS A VERY IMPORTANT FUNCTIONALITY----------------------------
+		 Because the heading will be recieved as -pi to pi the shiftpoint (lets say -3.1 and the next revieved sample
+		 is 3.13) the heading has shifted 0.05 radians but the Kalman filter will see it as a BIG shift and this will create
+		 numerical instability in the heading. So the solution for this is to keep track of the shifts from pi to minus pi and
+		 have a "global" heading which where the shift points are treated as a rotation. i.e if the IMU sends out
+		 heading -3.13 and then next frame 3.13 we will take 3.13 - PI and then get -0.02 which then the heading will be
+		 -3.15 instead. This technique eliminates the numerical instability of the Kalman filter	
+		*/
 		if(m_filterInit){
 			double headingDiff = m_lastHeadingMeasurement - heading;
 			m_lastHeadingMeasurement = heading;
@@ -239,6 +248,10 @@ void Kalman::nextHeading(cluon::data::Envelope data){
 		
   
 }
+
+/*
+takes the mean of the left and right wheel encoder
+*/
 void Kalman::nextGroundSpeed(cluon::data::Envelope data){
 
   std::lock_guard<std::mutex> lockGroundSpeed(m_groundSpeedMutex);
@@ -338,7 +351,12 @@ bool Kalman::getModuleState(){
   return m_readyState;
 
 }
-
+/*
+Converts the rack position into wheel angle.
+These constants are derived from a dataset from the regular CFS team
+it is a linear conversion as seen in delta.
+0.042 is the bias of the sensor measuring the rack position
+*/
 double Kalman::rackTravelToFrontWheelSteering(float &rackTravel)
 {
 
@@ -349,6 +367,10 @@ double Kalman::rackTravelToFrontWheelSteering(float &rackTravel)
 	//std::cout << "delta: " << delta << std::endl;
 	return delta;
 }
+
+/*
+MAGIC FORMULA IS NOT USED AND CAN BE REMOVED
+*/
 double Kalman::magicFormula(double &alpha, double &Fz, double const &mu)
 {
 
@@ -361,6 +383,12 @@ double Kalman::magicFormula(double &alpha, double &Fz, double const &mu)
 	return Fy;
 }
 
+/*
+alpha,beta,kappa,lambda is very important parameters in a UKF.
+They deside the spread of the sigma points. Experimenting with these paramters without knowing
+what you are doing can create MAJOR issues. These parameters are set so no numerical instabilities in the kalman filter
+will occur. IF a UKF in the furute is used the one responsible needs to study these parameters
+*/
 Eigen::MatrixXd Kalman::UKFWeights()
 {
 
@@ -387,6 +415,12 @@ Eigen::MatrixXd Kalman::UKFWeights()
 	return Wmc;
 }
 
+/*
+sigmaPoints calculates the sigma points.
+sigma points represent the probability density of the states,
+each states have their own sigma points.
+Think of it as the sigma points is sample points that describes the probability density
+*/
 Eigen::MatrixXd Kalman::sigmaPoints(Eigen::MatrixXd &x)
 {
 
@@ -412,7 +446,9 @@ Eigen::MatrixXd Kalman::sigmaPoints(Eigen::MatrixXd &x)
 	SP << x, Ap, An;
 	return SP;
 }
-
+/*
+The prediction uses the model to predict where the states should be next iteration
+*/
 void Kalman::UKFPrediction()
 {	
 
@@ -455,7 +491,9 @@ void Kalman::UKFPrediction()
 
 	//std::cout << "after prediction: " << m_states.transpose() << std::endl;
 }
-
+/*
+the update uses the measurements to correct the states
+*/
 void Kalman::UKFUpdate()
 {
 
@@ -484,7 +522,8 @@ void Kalman::UKFUpdate()
 	Eigen::MatrixXd Pxy = Eigen::MatrixXd::Zero(6,7);
 	//Innovation covariance
 
-
+	//This is the slam pose feedback settings, if motionSlamUpdate is True the UKF will use
+	//SLAM poses to update instead of IMU measeurements
 	if(m_motionSlamUpdate){
 
 		if(m_recievedSlamPose){
@@ -738,6 +777,11 @@ void Kalman::sendStates(uint32_t ukfStamp){
 	//std::cout << m_states << std::endl;
 }
 
+/*
+Initialize module basically checks that all the measurements that are required are recieved.
+a set of measurement should have consequentially been recived to validate that the module is ready
+for filtering 
+*/
 void Kalman::initializeModule(){
 	int validGpsMeasurements = 0;
 	//int validGroundspeedMeasurements = 0;
@@ -966,6 +1010,17 @@ bool Kalman::getFilterInitState(){
 	return m_filterInit;
 
 }
+
+/*
+
+The initialization of the UKF states is most important for the HEADING of the vehicle,
+due to the current sensor setup with only one IMU the initial heading can not be achieved.
+the current strategy checks if the car is going in a straight line (yaw Z should be close to zero)
+
+One tricky thing in this part is the cooparation of the initial heading and the Ellipse-2N heading.
+the Ellipse-2N will not initialize its heading until 15 m/s and will arbitrary set its heading to an angle.
+so the Ellipse-2N heading will have to be projected into our own initalized heading.
+*/
 void Kalman::filterInitialization(){
 
 	std::lock_guard<std::mutex> lockPose(m_poseMutex);
