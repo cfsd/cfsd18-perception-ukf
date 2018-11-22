@@ -17,6 +17,17 @@
 * USA.
 */
 
+/*------------------------------------IMPORTANT NOTES---------------------------------
+As said in the meeting I think the state estimation should be totaly reworked.
+What I suggest is first and foremost REALLY think about the sensor setup to achieve the states that you need.
+Position, heading, accelerations, yawrates and more, without good states SLAM will struggle, and then control of the vehicle will suffer.
+a new more accurate VEHICLE MODEL is needed.
+better INITIALIZATION is needed. I suggest find a two antenna solution to be able to initalize the heading at standstill.
+UKF is not a must, EKF will work aswell.
+really analyze how delay introduce incertanties into the states.
+Think about how to use the SLAM pose as a feedback in the update step in the filter, we are doing it currently but it can improved
+
+*/
 #include <iostream>
 
 #include "ukf.hpp"
